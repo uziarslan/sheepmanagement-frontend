@@ -1,0 +1,12 @@
+export { default as Login } from './Auth/Login';
+export { default as Register } from './Auth/Register';
+export { default as Dashboard } from './Dashboard/Dashboard';
+export { default as Capital } from './Capital/Capital';
+export { default as AnimalList } from './Animals/AnimalList';
+export { default as AnimalForm } from './Animals/AnimalForm';
+export { default as PenList } from './Pens/PenList';
+export { default as PenForm } from './Pens/PenForm';
+export { default as StockList } from './Stock/StockList';
+export { default as StockForm } from './Stock/StockForm';
+export { default as EmployeeList } from './Employees/EmployeeList';
+export { default as EmployeeForm } from './Employees/EmployeeForm';
