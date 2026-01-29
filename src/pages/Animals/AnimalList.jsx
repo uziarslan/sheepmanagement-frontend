@@ -199,6 +199,7 @@ const AnimalList = () => {
             <TableHeader>Weight</TableHeader>
             <TableHeader>Pen</TableHeader>
             <TableHeader>Price</TableHeader>
+            <TableHeader>Price/Kg</TableHeader>
             <TableHeader>Status</TableHeader>
             <TableHeader className="text-right">Actions</TableHeader>
           </TableHead>
@@ -209,7 +210,7 @@ const AnimalList = () => {
                   ? "No animals match your search criteria" 
                   : "No animals registered yet"
                 }
-                colSpan={9}
+                colSpan={10}
               />
             ) : (
               filteredAnimals.map((animal) => (
@@ -244,6 +245,14 @@ const AnimalList = () => {
                   </TableCell>
                   <TableCell>
                     <span className="font-medium">{formatCurrency(animal.purchasePrice)}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-medium text-emerald-600">
+                      {animal.weight > 0 
+                        ? formatCurrency(animal.purchasePrice / animal.weight) 
+                        : '-'
+                      }
+                    </span>
                   </TableCell>
                   <TableCell>
                     <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(animal.status)}`}>

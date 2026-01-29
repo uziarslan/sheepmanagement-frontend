@@ -8,12 +8,25 @@ import {
   Capital,
   AnimalList,
   AnimalForm,
+  BulkUpload,
+  MoveToPen,
   PenList,
   PenForm,
   StockList,
   StockForm,
   EmployeeList,
-  EmployeeForm
+  EmployeeForm,
+  EmployeeAdvance,
+  Vaccination,
+  Treatment,
+  CureTracking,
+  Deworming,
+  BodyWeight,
+  BodyConditionScore,
+  HoofTrimming,
+  FeedRecipeList,
+  FeedRecipeForm,
+  ApplyRecipe
 } from './pages';
 
 // Protected Route Component
@@ -100,6 +113,8 @@ function App() {
           {/* Animals */}
           <Route path="animals" element={<AnimalList />} />
           <Route path="animals/add" element={<AnimalForm />} />
+          <Route path="animals/bulk-upload" element={<BulkUpload />} />
+          <Route path="animals/move-to-pen" element={<MoveToPen />} />
           <Route path="animals/:id" element={<AnimalForm />} />
           <Route path="animals/:id/edit" element={<AnimalForm />} />
           
@@ -117,8 +132,24 @@ function App() {
           {/* Employees */}
           <Route path="employees" element={<EmployeeList />} />
           <Route path="employees/add" element={<EmployeeForm />} />
+          <Route path="employees/advances" element={<EmployeeAdvance />} />
           <Route path="employees/:id" element={<EmployeeForm />} />
           <Route path="employees/:id/edit" element={<EmployeeForm />} />
+          
+          {/* Health & Veterinary */}
+          <Route path="health/vaccination" element={<Vaccination />} />
+          <Route path="health/treatment" element={<Treatment />} />
+          <Route path="health/cure-tracking" element={<CureTracking />} />
+          <Route path="health/deworming" element={<Deworming />} />
+          <Route path="health/body-weight" element={<BodyWeight />} />
+          <Route path="health/bcs" element={<BodyConditionScore />} />
+          <Route path="health/hoof-trimming" element={<HoofTrimming />} />
+          
+          {/* Feed & Recipe Management */}
+          <Route path="feed/recipes" element={<FeedRecipeList />} />
+          <Route path="feed/recipes/add" element={<FeedRecipeForm />} />
+          <Route path="feed/recipes/:id/edit" element={<FeedRecipeForm />} />
+          <Route path="feed/apply" element={<ApplyRecipe />} />
         </Route>
 
         {/* Redirect root to login */}

@@ -390,3 +390,37 @@ export const stockUnits = ["kg", "gm", "ltr", "ml", "nos"];
 export const departments = ["Operations", "Health", "Finance", "Administration"];
 export const designations = ["Farm Manager", "Veterinarian", "Farm Worker", "Accountant", "Supervisor", "Security"];
 export const banks = ["HBL", "MCB", "UBL", "Allied Bank", "Bank Alfalah", "Meezan Bank", "Faysal Bank"];
+
+// Health & Veterinary options
+export const treatmentTypes = ["Treatment", "Protocol"];
+export const diagnosisTypes = [
+  "Intrauterine",
+  "Dystokia",
+  "Wound",
+  "Theleria",
+  "Mastitis",
+  "Pneumonia",
+  "Diarrhea",
+  "Bloat",
+  "Foot Rot",
+  "Pink Eye",
+  "Parasitic Infection",
+  "Respiratory Infection",
+  "Fever",
+  "Other"
+];
+export const dewormingTypes = ["Albendazole", "Levamisole", "Thunder", "Ivermectin", "Fenbendazole"];
+export const hoofDiagnosis = [
+  "Foot Rot",
+  "Laminitis",
+  "White Line Disease",
+  "Sole Ulcer",
+  "Heel Erosion",
+  "Interdigital Dermatitis",
+  "Digital Dermatitis",
+  "Overgrown Hooves",
+  "Cracked Hooves",
+  "Abscess",
+  "Routine Trimming",
+  "Other"
+];

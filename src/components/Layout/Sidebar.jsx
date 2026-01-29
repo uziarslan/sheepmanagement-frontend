@@ -8,7 +8,9 @@ import {
   HiOutlineUsers,
   HiOutlineLogout,
   HiOutlineX,
-  HiOutlineChevronDown
+  HiOutlineChevronDown,
+  HiOutlineHeart,
+  HiOutlineBeaker
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
 
@@ -33,7 +35,9 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
       path: '/dashboard/animals',
       submenu: [
         { name: 'All Animals', path: '/dashboard/animals' },
-        { name: 'Add Animal', path: '/dashboard/animals/add' }
+        { name: 'Add Animal', path: '/dashboard/animals/add' },
+        { name: 'Bulk Upload', path: '/dashboard/animals/bulk-upload' },
+        { name: 'Move to Pen', path: '/dashboard/animals/move-to-pen' }
       ]
     },
     {
@@ -60,7 +64,32 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
       path: '/dashboard/employees',
       submenu: [
         { name: 'All Employees', path: '/dashboard/employees' },
-        { name: 'Add Employee', path: '/dashboard/employees/add' }
+        { name: 'Add Employee', path: '/dashboard/employees/add' },
+        { name: 'Advances / Loans', path: '/dashboard/employees/advances' }
+      ]
+    },
+    {
+      name: 'Health',
+      icon: HiOutlineHeart,
+      path: '/dashboard/health',
+      submenu: [
+        { name: 'Vaccination', path: '/dashboard/health/vaccination' },
+        { name: 'Treatment', path: '/dashboard/health/treatment' },
+        { name: 'Cure Tracking', path: '/dashboard/health/cure-tracking' },
+        { name: 'Deworming', path: '/dashboard/health/deworming' },
+        { name: 'Body Weight', path: '/dashboard/health/body-weight' },
+        { name: 'BCS', path: '/dashboard/health/bcs' },
+        { name: 'Hoof Trimming', path: '/dashboard/health/hoof-trimming' }
+      ]
+    },
+    {
+      name: 'Feed',
+      icon: HiOutlineBeaker,
+      path: '/dashboard/feed',
+      submenu: [
+        { name: 'All Recipes', path: '/dashboard/feed/recipes' },
+        { name: 'Create Recipe', path: '/dashboard/feed/recipes/add' },
+        { name: 'Apply Recipe', path: '/dashboard/feed/apply' }
       ]
     }
   ];
