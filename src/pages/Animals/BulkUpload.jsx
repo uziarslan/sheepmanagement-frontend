@@ -9,7 +9,9 @@ import {
   HiOutlineTrash,
   HiOutlineCheck,
   HiOutlineExclamation,
-  HiOutlineX
+  HiOutlineX,
+  HiOutlineRefresh,
+  HiOutlineExclamationCircle
 } from 'react-icons/hi';
 import { animalAPI, penAPI } from '../../services/mockApi';
 import {
@@ -23,7 +25,8 @@ import {
   TableBody,
   TableRow,
   TableCell,
-  TableEmpty
+  TableEmpty,
+  Select
 } from '../../components/common';
 import { PageLoader } from '../../components/common/Spinner';
 import {
@@ -38,30 +41,70 @@ const BulkUpload = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const [pens, setPens] = useState([]);
+  const [existingAnimals, setExistingAnimals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [parsedData, setParsedData] = useState([]);
-  const [errors, setErrors] = useState([]);
+  const [uploadErrors, setUploadErrors] = useState([]);
   const [dragActive, setDragActive] = useState(false);
 
+  const getId = (item) => item?._id ?? item?.id;
+
   useEffect(() => {
-    fetchPens();
+    fetchData();
   }, []);
 
-  const fetchPens = async () => {
+  const fetchData = async () => {
     try {
-      const response = await penAPI.getAll();
-      if (response.success) {
-        setPens(response.data);
+      // Fetch pens and animals separately to handle errors individually
+      let pensData = [];
+      let animalsData = [];
+
+      try {
+        const pensRes = await penAPI.getAll({ limit: 100 });
+        console.log('Pens API response:', pensRes);
+        if (pensRes.success && pensRes.data) {
+          pensData = Array.isArray(pensRes.data) ? pensRes.data : [];
+        } else if (Array.isArray(pensRes)) {
+          // In case API returns array directly
+          pensData = pensRes;
+        } else if (pensRes && pensRes.data && Array.isArray(pensRes.data)) {
+          pensData = pensRes.data;
+        }
+        console.log('Parsed pens data:', pensData);
+      } catch (penError) {
+        console.error('Error fetching pens:', penError);
+        toast.error('Failed to load pens. Please refresh the page.');
+      }
+
+      try {
+        const animalsRes = await animalAPI.getAll({ limit: 1000 });
+        if (animalsRes.success && animalsRes.data) {
+          animalsData = animalsRes.data;
+        } else if (Array.isArray(animalsRes)) {
+          animalsData = animalsRes;
+        } else if (animalsRes.data && Array.isArray(animalsRes.data)) {
+          animalsData = animalsRes.data;
+        }
+      } catch (animalError) {
+        console.error('Error fetching animals:', animalError);
+      }
+
+      setPens(pensData);
+      setExistingAnimals(animalsData);
+
+      if (pensData.length === 0) {
+        toast.error('No pens found. Please create pens first before bulk uploading animals.');
       }
     } catch (error) {
-      console.error('Error fetching pens:', error);
+      console.error('Error fetching data:', error);
+      toast.error('Failed to load data. Please refresh the page.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Template columns definition
+  // Template columns definition - Pen is removed, will be selected in preview
   const templateColumns = [
     { key: 'tagId', label: 'Tag ID', required: true, example: 'SHP-001' },
     { key: 'electronicId', label: 'Electronic ID (RFID)', required: false, example: 'RFID-0001' },
@@ -76,7 +119,6 @@ const BulkUpload = () => {
     { key: 'purchasePrice', label: 'Purchase Price', required: true, example: '45000' },
     { key: 'weight', label: 'Weight (kg)', required: true, example: '35' },
     { key: 'weightDate', label: 'Weight Date', required: false, example: '2025-01-15' },
-    { key: 'penName', label: 'Pen Name', required: true, example: 'Pen A - Fattening 1' },
     { key: 'notes', label: 'Notes', required: false, example: 'Healthy animal' }
   ];
 
@@ -102,16 +144,21 @@ const BulkUpload = () => {
       ['Required Fields:'],
       ...templateColumns.filter(c => c.required).map(c => [`- ${c.label}`]),
       [''],
+      ['Note: Pen will be selected after uploading, in the preview table.'],
+      [''],
       ['Valid Options:'],
       [`Animal Type: ${animalTypes.join(', ')}`],
       [`Breed Type: ${breedTypes.join(', ')}`],
       [`Subcategory: ${animalSubcategories.join(', ')}`],
       [`Sex: ${sexOptions.join(', ')}`],
       [`Purchased From: ${countries.join(', ')}`],
-      [`Pen Name: ${pens.map(p => p.name).join(', ')}`],
       [''],
       ['Date Format: YYYY-MM-DD (e.g., 2025-01-15)'],
-      ['Price & Weight: Numbers only (no currency symbols)']
+      ['Price & Weight: Numbers only (no currency symbols)'],
+      [''],
+      ['Important:'],
+      ['- Tag ID must be unique (not already in the system)'],
+      ['- Each Tag ID can only appear once in the upload file']
     ];
     
     const instructionsSheet = XLSX.utils.aoa_to_sheet(instructionsData);
@@ -122,10 +169,36 @@ const BulkUpload = () => {
     toast.success('Template downloaded successfully');
   };
 
+  // Check if tag ID already exists in database
+  const isTagIdExistsInDb = (tagId) => {
+    if (!tagId) return false;
+    return existingAnimals.some(a => 
+      a.tagId?.toLowerCase().trim() === tagId.toLowerCase().trim()
+    );
+  };
+
+  // Get friendly error message
+  const getFriendlyErrorMessage = (key, value) => {
+    const fieldLabels = {
+      tagId: 'Tag ID',
+      name: 'Animal Name',
+      animalType: 'Animal Type',
+      breedType: 'Breed Type',
+      sex: 'Sex',
+      purchasePrice: 'Purchase Price',
+      weight: 'Weight',
+      arrivalDate: 'Arrival Date',
+      birthDate: 'Birth Date',
+      weightDate: 'Weight Date',
+      penId: 'Pen'
+    };
+    return fieldLabels[key] || key;
+  };
+
   // Validate a single row
-  const validateRow = (row, index) => {
+  const validateRow = (row, index, allRows) => {
     const rowErrors = [];
-    const validatedData = { ...row, rowIndex: index + 2 }; // +2 for header row and 0-based index
+    const validatedData = { ...row, rowIndex: index + 2, penId: '' }; // +2 for header row and 0-based index
 
     // Check required fields
     templateColumns.forEach(col => {
@@ -134,61 +207,104 @@ const BulkUpload = () => {
       }
     });
 
+    // Check for duplicate Tag ID within the uploaded file
+    if (row.tagId) {
+      const duplicatesInFile = allRows.filter((r, i) => 
+        i !== index && 
+        r.tagId?.toLowerCase().trim() === row.tagId.toLowerCase().trim()
+      );
+      if (duplicatesInFile.length > 0) {
+        rowErrors.push(`Tag ID "${row.tagId}" appears multiple times in this file`);
+      }
+
+      // Check if Tag ID already exists in database
+      if (isTagIdExistsInDb(row.tagId)) {
+        rowErrors.push(`Tag ID "${row.tagId}" already exists in the system`);
+      }
+    }
+
     // Validate animal type
     if (row.animalType && !animalTypes.includes(row.animalType)) {
-      rowErrors.push(`Invalid Animal Type: ${row.animalType}`);
+      rowErrors.push(`"${row.animalType}" is not a valid Animal Type. Valid options: ${animalTypes.join(', ')}`);
     }
 
     // Validate breed type
     if (row.breedType && !breedTypes.includes(row.breedType)) {
-      rowErrors.push(`Invalid Breed Type: ${row.breedType}`);
+      rowErrors.push(`"${row.breedType}" is not a valid Breed Type. Valid options: ${breedTypes.join(', ')}`);
     }
 
     // Validate sex
     if (row.sex && !sexOptions.includes(row.sex)) {
-      rowErrors.push(`Invalid Sex: ${row.sex}`);
+      rowErrors.push(`"${row.sex}" is not a valid Sex. Valid options: ${sexOptions.join(', ')}`);
     }
 
     // Validate subcategory
     if (row.subcategory && !animalSubcategories.includes(row.subcategory)) {
-      rowErrors.push(`Invalid Subcategory: ${row.subcategory}`);
+      rowErrors.push(`"${row.subcategory}" is not a valid Subcategory. Valid options: ${animalSubcategories.join(', ')}`);
     }
 
-    // Validate pen name and get penId
-    if (row.penName) {
-      const pen = pens.find(p => p.name.toLowerCase() === row.penName.toLowerCase());
-      if (pen) {
-        validatedData.penId = pen.id;
-      } else {
-        rowErrors.push(`Invalid Pen Name: ${row.penName}`);
-      }
+    // Validate purchased from
+    if (row.purchasedFrom && !countries.includes(row.purchasedFrom)) {
+      rowErrors.push(`"${row.purchasedFrom}" is not a valid country. Valid options: ${countries.slice(0, 5).join(', ')}...`);
     }
 
     // Validate numbers
-    if (row.purchasePrice && (isNaN(row.purchasePrice) || parseFloat(row.purchasePrice) <= 0)) {
-      rowErrors.push('Invalid Purchase Price');
-    } else {
-      validatedData.purchasePrice = parseFloat(row.purchasePrice);
+    if (row.purchasePrice) {
+      const price = parseFloat(row.purchasePrice);
+      if (isNaN(price)) {
+        rowErrors.push(`Purchase Price "${row.purchasePrice}" is not a valid number`);
+      } else if (price <= 0) {
+        rowErrors.push('Purchase Price must be greater than 0');
+      } else {
+        validatedData.purchasePrice = price;
+      }
     }
 
-    if (row.weight && (isNaN(row.weight) || parseFloat(row.weight) <= 0)) {
-      rowErrors.push('Invalid Weight');
-    } else {
-      validatedData.weight = parseFloat(row.weight);
+    if (row.weight) {
+      const weight = parseFloat(row.weight);
+      if (isNaN(weight)) {
+        rowErrors.push(`Weight "${row.weight}" is not a valid number`);
+      } else if (weight <= 0) {
+        rowErrors.push('Weight must be greater than 0');
+      } else if (weight > 500) {
+        rowErrors.push('Weight seems too high (max 500 kg)');
+      } else {
+        validatedData.weight = weight;
+      }
     }
 
     // Validate dates
     const dateFields = ['arrivalDate', 'birthDate', 'weightDate'];
     dateFields.forEach(field => {
       if (row[field]) {
-        const date = new Date(row[field]);
+        const dateStr = row[field].toString().trim();
+        const date = new Date(dateStr);
+        
         if (isNaN(date.getTime())) {
-          rowErrors.push(`Invalid ${field.replace(/([A-Z])/g, ' $1').trim()}`);
+          const fieldLabel = field.replace(/([A-Z])/g, ' $1').trim();
+          rowErrors.push(`"${dateStr}" is not a valid date format for ${fieldLabel}. Use YYYY-MM-DD format.`);
         } else {
-          validatedData[field] = row[field];
+          // Check if date is not in the future (except for arrivalDate which could be today)
+          const today = new Date();
+          today.setHours(23, 59, 59, 999);
+          
+          if (field === 'birthDate' && date > today) {
+            rowErrors.push('Birth Date cannot be in the future');
+          }
+          
+          validatedData[field] = dateStr;
         }
       }
     });
+
+    // Check if birth date is before arrival date
+    if (validatedData.birthDate && validatedData.arrivalDate) {
+      const birthDate = new Date(validatedData.birthDate);
+      const arrivalDate = new Date(validatedData.arrivalDate);
+      if (birthDate > arrivalDate) {
+        rowErrors.push('Birth Date cannot be after Arrival Date');
+      }
+    }
 
     validatedData.status = 'Active';
     validatedData.pedigreeInfo = false;
@@ -196,6 +312,24 @@ const BulkUpload = () => {
     validatedData.errors = rowErrors;
 
     return validatedData;
+  };
+
+  // Re-validate all rows (used when pen is changed)
+  const revalidateRows = (data) => {
+    return data.map((row, index) => {
+      const errors = [...row.errors.filter(e => !e.includes('Pen'))];
+      
+      // Check if pen is selected
+      if (!row.penId) {
+        errors.push('Please select a Pen for this animal');
+      }
+
+      return {
+        ...row,
+        errors,
+        isValid: errors.length === 0
+      };
+    });
   };
 
   // Parse Excel file
@@ -215,7 +349,7 @@ const BulkUpload = () => {
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false });
         
         if (jsonData.length === 0) {
-          toast.error('No data found in the Excel file');
+          toast.error('The Excel file is empty. Please add animal data and try again.');
           return;
         }
 
@@ -229,23 +363,34 @@ const BulkUpload = () => {
           return mappedRow;
         });
 
-        // Validate each row
-        const validatedData = mappedData.map((row, index) => validateRow(row, index));
+        // Validate each row (pass all rows for duplicate check)
+        const validatedData = mappedData.map((row, index) => validateRow(row, index, mappedData));
         
-        setParsedData(validatedData);
+        // Mark all as needing pen selection (add pen error)
+        const dataWithPenError = validatedData.map(row => ({
+          ...row,
+          errors: [...row.errors, 'Please select a Pen for this animal'],
+          isValid: false
+        }));
         
-        const validCount = validatedData.filter(r => r.isValid).length;
-        const invalidCount = validatedData.length - validCount;
+        setParsedData(dataWithPenError);
+        setUploadErrors([]);
         
-        if (invalidCount > 0) {
-          toast.error(`${invalidCount} of ${validatedData.length} rows have errors`);
+        const dataErrors = validatedData.filter(r => r.errors.length > 0).length;
+        
+        if (dataErrors > 0) {
+          toast.error(`${dataErrors} row(s) have validation errors. Please fix them before uploading.`);
         } else {
-          toast.success(`${validCount} animals ready to import`);
+          toast.success(`${validatedData.length} animal(s) parsed successfully. Please select a pen for each animal.`);
         }
       } catch (error) {
         console.error('Error parsing Excel:', error);
-        toast.error('Failed to parse Excel file. Please check the format.');
+        toast.error('Failed to read the Excel file. Please make sure it\'s a valid .xlsx or .xls file.');
       }
+    };
+
+    reader.onerror = () => {
+      toast.error('Failed to read the file. Please try again.');
     };
 
     reader.readAsArrayBuffer(file);
@@ -256,7 +401,11 @@ const BulkUpload = () => {
     const file = e.target.files?.[0];
     if (file) {
       if (!file.name.match(/\.(xlsx|xls)$/i)) {
-        toast.error('Please upload an Excel file (.xlsx or .xls)');
+        toast.error('Invalid file type. Please upload an Excel file (.xlsx or .xls)');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast.error('File is too large. Maximum size is 5MB.');
         return;
       }
       parseExcelFile(file);
@@ -282,58 +431,155 @@ const BulkUpload = () => {
     const file = e.dataTransfer?.files?.[0];
     if (file) {
       if (!file.name.match(/\.(xlsx|xls)$/i)) {
-        toast.error('Please upload an Excel file (.xlsx or .xls)');
+        toast.error('Invalid file type. Please upload an Excel file (.xlsx or .xls)');
         return;
       }
       parseExcelFile(file);
     }
   };
 
+  // Handle pen selection for a row
+  const handlePenChange = (index, penId) => {
+    setParsedData(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], penId };
+      return revalidateRows(updated);
+    });
+  };
+
+  // Set same pen for all rows
+  const setAllPens = (penId) => {
+    if (!penId) return;
+    setParsedData(prev => {
+      const updated = prev.map(row => ({ ...row, penId }));
+      return revalidateRows(updated);
+    });
+    toast.success(`Pen set for all ${parsedData.length} animals`);
+  };
+
   // Remove row from parsed data
   const removeRow = (index) => {
-    setParsedData(prev => prev.filter((_, i) => i !== index));
+    setParsedData(prev => {
+      const updated = prev.filter((_, i) => i !== index);
+      // Re-validate to update duplicate tag ID checks
+      return updated.map((row, i) => {
+        const baseRow = { ...row };
+        // Remove old duplicate errors and re-check
+        baseRow.errors = baseRow.errors.filter(e => !e.includes('appears multiple times'));
+        const duplicatesInFile = updated.filter((r, j) => 
+          j !== i && 
+          r.tagId?.toLowerCase().trim() === baseRow.tagId?.toLowerCase().trim()
+        );
+        if (duplicatesInFile.length > 0) {
+          baseRow.errors.push(`Tag ID "${baseRow.tagId}" appears multiple times in this file`);
+        }
+        baseRow.isValid = baseRow.errors.length === 0;
+        return baseRow;
+      });
+    });
   };
 
   // Clear all data
   const clearData = () => {
     setParsedData([]);
-    setErrors([]);
+    setUploadErrors([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
+  // Pre-upload validation
+  const validateBeforeUpload = () => {
+    const errors = [];
+
+    // Check if any rows exist
+    if (parsedData.length === 0) {
+      errors.push('No data to upload. Please upload an Excel file first.');
+      return errors;
+    }
+
+    // Check for rows without pen selected
+    const noPenRows = parsedData.filter(r => !r.penId);
+    if (noPenRows.length > 0) {
+      errors.push(`${noPenRows.length} animal(s) don't have a pen selected. Please select a pen for each animal.`);
+    }
+
+    // Check for invalid rows
+    const invalidRows = parsedData.filter(r => !r.isValid);
+    if (invalidRows.length > 0) {
+      errors.push(`${invalidRows.length} animal(s) have validation errors. Please fix them or remove the rows.`);
+    }
+
+    // Check for duplicate tag IDs one more time
+    const tagIds = parsedData.map(r => r.tagId?.toLowerCase().trim()).filter(Boolean);
+    const duplicates = tagIds.filter((id, i) => tagIds.indexOf(id) !== i);
+    if (duplicates.length > 0) {
+      errors.push(`Duplicate Tag IDs found: ${[...new Set(duplicates)].join(', ')}`);
+    }
+
+    return errors;
+  };
+
   // Upload all valid animals
   const handleUpload = async () => {
+    const preUploadErrors = validateBeforeUpload();
+    if (preUploadErrors.length > 0) {
+      setUploadErrors(preUploadErrors);
+      preUploadErrors.forEach(err => toast.error(err));
+      return;
+    }
+
     const validAnimals = parsedData.filter(a => a.isValid);
     
     if (validAnimals.length === 0) {
-      toast.error('No valid animals to upload');
+      toast.error('No valid animals to upload. Please fix all errors first.');
       return;
     }
 
     setUploading(true);
+    setUploadErrors([]);
     let successCount = 0;
-    let failCount = 0;
+    const failedAnimals = [];
 
     for (const animal of validAnimals) {
       try {
-        const { rowIndex, isValid, errors, penName, ...animalData } = animal;
-        await animalAPI.create(animalData);
-        successCount++;
+        const { rowIndex, isValid, errors: rowErrors, ...animalData } = animal;
+        // Map penId to pen for backend
+        animalData.pen = animalData.penId;
+        delete animalData.penId;
+        
+        const response = await animalAPI.create(animalData);
+        if (response.success) {
+          successCount++;
+        } else {
+          failedAnimals.push({
+            tagId: animal.tagId,
+            error: response.error || 'Unknown error'
+          });
+        }
       } catch (error) {
-        failCount++;
+        const errorMsg = error.response?.data?.message || error.message || 'Server error';
+        failedAnimals.push({
+          tagId: animal.tagId,
+          error: errorMsg
+        });
         console.error('Error creating animal:', error);
       }
     }
 
     setUploading(false);
 
-    if (failCount === 0) {
-      toast.success(`Successfully added ${successCount} animals!`);
+    if (failedAnimals.length === 0) {
+      toast.success(`Successfully added ${successCount} animal(s)!`);
       navigate('/dashboard/animals');
     } else {
-      toast.error(`Added ${successCount} animals, ${failCount} failed`);
+      const errorMessages = failedAnimals.map(f => `${f.tagId}: ${f.error}`);
+      setUploadErrors([
+        `${successCount} animal(s) added successfully.`,
+        `${failedAnimals.length} animal(s) failed to upload:`,
+        ...errorMessages
+      ]);
+      toast.error(`${failedAnimals.length} animal(s) failed to upload. See details below.`);
     }
   };
 
@@ -343,6 +589,16 @@ const BulkUpload = () => {
 
   const validCount = parsedData.filter(r => r.isValid).length;
   const invalidCount = parsedData.length - validCount;
+  const noPenCount = parsedData.filter(r => !r.penId).length;
+
+  // Pen options for dropdown
+  const penOptions = [
+    { value: '', label: 'Select Pen...' },
+    ...pens.map(p => ({ 
+      value: getId(p), 
+      label: `${p.name} (${p.animalCount || 0}/${p.capacity || '?'})` 
+    }))
+  ];
 
   return (
     <div className="space-y-6">
@@ -371,9 +627,10 @@ const BulkUpload = () => {
             <h3 className="text-lg font-semibold text-gray-800 mb-2">How to bulk upload animals</h3>
             <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
               <li>Download the Excel template with all required columns</li>
-              <li>Fill in the animal data (one animal per row)</li>
+              <li>Fill in the animal data (one animal per row) - <span className="text-emerald-600 font-medium">Pen will be selected here</span></li>
               <li>Upload the completed file below</li>
-              <li>Review the data and fix any errors</li>
+              <li>Select a pen for each animal from the dropdown</li>
+              <li>Review the data and fix any errors shown in red</li>
               <li>Click "Upload Animals" to import</li>
             </ol>
           </div>
@@ -386,6 +643,39 @@ const BulkUpload = () => {
           </Button>
         </div>
       </Card>
+
+      {/* Pens Status */}
+      {pens.length === 0 ? (
+        <Card className="border-orange-200 bg-orange-50">
+          <div className="flex items-center gap-3">
+            <HiOutlineExclamationCircle className="w-6 h-6 text-orange-600" />
+            <div>
+              <p className="font-medium text-orange-800">No pens available</p>
+              <p className="text-sm text-orange-600">
+                Please create pens first before bulk uploading animals.{' '}
+                <button 
+                  onClick={() => navigate('/dashboard/pens/add')}
+                  className="underline hover:no-underline"
+                >
+                  Create a pen
+                </button>
+              </p>
+            </div>
+          </div>
+        </Card>
+      ) : (
+        <Card className="border-emerald-200 bg-emerald-50">
+          <div className="flex items-center gap-3">
+            <HiOutlineCheck className="w-6 h-6 text-emerald-600" />
+            <div>
+              <p className="font-medium text-emerald-800">{pens.length} pen(s) available</p>
+              <p className="text-sm text-emerald-600">
+                You can assign animals to: {pens.slice(0, 5).map(p => p.name).join(', ')}{pens.length > 5 ? ` and ${pens.length - 5} more` : ''}
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Upload Area */}
       <Card>
@@ -408,66 +698,117 @@ const BulkUpload = () => {
             accept=".xlsx,.xls"
             onChange={handleFileSelect}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            disabled={pens.length === 0}
           />
           
           <div className="space-y-4">
-            <div className="w-16 h-16 mx-auto bg-emerald-100 rounded-full flex items-center justify-center">
-              <HiOutlineCloudUpload className="w-8 h-8 text-emerald-600" />
+            <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center ${
+              pens.length === 0 ? 'bg-gray-100' : 'bg-emerald-100'
+            }`}>
+              <HiOutlineCloudUpload className={`w-8 h-8 ${pens.length === 0 ? 'text-gray-400' : 'text-emerald-600'}`} />
             </div>
             <div>
-              <p className="text-gray-700 font-medium">
-                Drag and drop your Excel file here, or click to browse
+              <p className={`font-medium ${pens.length === 0 ? 'text-gray-400' : 'text-gray-700'}`}>
+                {pens.length === 0 
+                  ? 'Please create pens first' 
+                  : 'Drag and drop your Excel file here, or click to browse'}
               </p>
               <p className="text-sm text-gray-500 mt-1">
-                Supports .xlsx and .xls files
+                Supports .xlsx and .xls files (max 5MB)
               </p>
             </div>
           </div>
         </div>
       </Card>
 
+      {/* Upload Errors */}
+      {uploadErrors.length > 0 && (
+        <Card className="border-red-200 bg-red-50">
+          <div className="flex items-start gap-3">
+            <HiOutlineExclamationCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-semibold text-red-800 mb-2">Upload Issues</h4>
+              <ul className="text-sm text-red-700 space-y-1">
+                {uploadErrors.map((error, i) => (
+                  <li key={i}>{error}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Parsed Data Preview */}
       {parsedData.length > 0 && (
         <Card>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <div>
-              <h3 className="text-lg font-semibold text-gray-800">Preview Data</h3>
+              <h3 className="text-lg font-semibold text-gray-800">Preview & Assign Pens</h3>
               <p className="text-sm text-gray-500 mt-1">
-                {validCount} valid, {invalidCount} with errors
+                {validCount} ready, {invalidCount} need attention
+                {noPenCount > 0 && ` (${noPenCount} without pen)`}
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <Button
                 variant="outline"
                 icon={HiOutlineTrash}
                 onClick={clearData}
               >
-                Clear
+                Clear All
               </Button>
               <Button
                 icon={HiOutlineCloudUpload}
                 onClick={handleUpload}
                 loading={uploading}
-                disabled={validCount === 0}
+                disabled={validCount === 0 || uploading}
               >
-                Upload {validCount} Animals
+                Upload {validCount} Animal{validCount !== 1 ? 's' : ''}
               </Button>
             </div>
           </div>
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
             <div className="bg-gray-50 rounded-xl p-4">
               <p className="text-sm text-gray-500">Total Rows</p>
               <p className="text-2xl font-bold text-gray-800">{parsedData.length}</p>
             </div>
             <div className="bg-emerald-50 rounded-xl p-4">
-              <p className="text-sm text-emerald-600">Valid</p>
+              <p className="text-sm text-emerald-600">Ready to Upload</p>
               <p className="text-2xl font-bold text-emerald-700">{validCount}</p>
             </div>
+            <div className="bg-orange-50 rounded-xl p-4">
+              <p className="text-sm text-orange-600">Need Pen</p>
+              <p className="text-2xl font-bold text-orange-700">{noPenCount}</p>
+            </div>
             <div className="bg-red-50 rounded-xl p-4">
-              <p className="text-sm text-red-600">Errors</p>
+              <p className="text-sm text-red-600">Has Errors</p>
               <p className="text-2xl font-bold text-red-700">{invalidCount}</p>
+            </div>
+          </div>
+
+          {/* Bulk Pen Assignment */}
+          <div className="mb-6 p-4 bg-blue-50 rounded-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex-1">
+                <p className="text-sm font-medium text-blue-800 mb-1">Quick Action: Set same pen for all animals</p>
+                <p className="text-xs text-blue-600">This will override individual pen selections</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <select 
+                  className="px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  onChange={(e) => setAllPens(e.target.value)}
+                  defaultValue=""
+                >
+                  <option value="">Select pen for all...</option>
+                  {pens.map(p => (
+                    <option key={getId(p)} value={getId(p)}>
+                      {p.name} ({p.animalCount || 0}/{p.capacity || '?'})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -484,20 +825,29 @@ const BulkUpload = () => {
                 <TableHeader>Sex</TableHeader>
                 <TableHeader>Price</TableHeader>
                 <TableHeader>Weight</TableHeader>
-                <TableHeader>Pen</TableHeader>
-                <TableHeader>Errors</TableHeader>
-                <TableHeader className="w-12">Action</TableHeader>
+                <TableHeader className="min-w-[200px]">Pen *</TableHeader>
+                <TableHeader>Issues</TableHeader>
+                <TableHeader className="w-12"></TableHeader>
               </TableHead>
               <TableBody>
                 {parsedData.map((animal, index) => (
-                  <TableRow key={index} className={!animal.isValid ? 'bg-red-50' : ''}>
+                  <TableRow 
+                    key={index} 
+                    className={
+                      !animal.isValid 
+                        ? animal.errors.some(e => e.includes('already exists') || e.includes('multiple times'))
+                          ? 'bg-red-100' 
+                          : 'bg-orange-50' 
+                        : ''
+                    }
+                  >
                     <TableCell>
                       {animal.isValid ? (
-                        <span className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center">
+                        <span className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center" title="Ready to upload">
                           <HiOutlineCheck className="w-4 h-4 text-emerald-600" />
                         </span>
                       ) : (
-                        <span className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center">
+                        <span className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center" title="Has errors">
                           <HiOutlineExclamation className="w-4 h-4 text-red-600" />
                         </span>
                       )}
@@ -506,19 +856,23 @@ const BulkUpload = () => {
                       <span className="text-sm text-gray-500">{animal.rowIndex}</span>
                     </TableCell>
                     <TableCell>
-                      <span className="font-mono text-sm">{animal.tagId || '-'}</span>
+                      <span className={`font-mono text-sm ${
+                        animal.errors.some(e => e.includes('Tag ID')) ? 'text-red-600 font-semibold' : ''
+                      }`}>
+                        {animal.tagId || <span className="text-red-400 italic">Missing</span>}
+                      </span>
                     </TableCell>
                     <TableCell>
-                      <span className="font-medium">{animal.name || '-'}</span>
+                      <span className="font-medium">{animal.name || <span className="text-red-400 italic">Missing</span>}</span>
                     </TableCell>
                     <TableCell>{animal.animalType || '-'}</TableCell>
                     <TableCell>{animal.breedType || '-'}</TableCell>
                     <TableCell>
-                      {animal.sex && (
+                      {animal.sex ? (
                         <Badge variant={animal.sex === 'Male' ? 'info' : 'purple'}>
                           {animal.sex}
                         </Badge>
-                      )}
+                      ) : '-'}
                     </TableCell>
                     <TableCell>
                       {animal.purchasePrice ? `Rs. ${animal.purchasePrice.toLocaleString()}` : '-'}
@@ -527,14 +881,30 @@ const BulkUpload = () => {
                       {animal.weight ? `${animal.weight} kg` : '-'}
                     </TableCell>
                     <TableCell>
-                      <span className="text-sm">{animal.penName || '-'}</span>
+                      <select
+                        value={animal.penId || ''}
+                        onChange={(e) => handlePenChange(index, e.target.value)}
+                        className={`w-full px-2 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${
+                          !animal.penId ? 'border-orange-300 bg-orange-50' : 'border-gray-300'
+                        }`}
+                      >
+                        <option value="">Select Pen...</option>
+                        {pens.map(p => (
+                          <option key={getId(p)} value={getId(p)}>
+                            {p.name} ({p.animalCount || 0}/{p.capacity || '?'})
+                          </option>
+                        ))}
+                      </select>
                     </TableCell>
                     <TableCell>
                       {animal.errors?.length > 0 && (
-                        <ul className="text-xs text-red-600 space-y-0.5">
-                          {animal.errors.map((err, i) => (
-                            <li key={i}>• {err}</li>
+                        <ul className="text-xs text-red-600 space-y-0.5 max-w-xs">
+                          {animal.errors.slice(0, 3).map((err, i) => (
+                            <li key={i} className="truncate" title={err}>• {err}</li>
                           ))}
+                          {animal.errors.length > 3 && (
+                            <li className="text-gray-500">+{animal.errors.length - 3} more</li>
+                          )}
                         </ul>
                       )}
                     </TableCell>
@@ -542,7 +912,7 @@ const BulkUpload = () => {
                       <button
                         onClick={() => removeRow(index)}
                         className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Remove"
+                        title="Remove this row"
                       >
                         <HiOutlineX className="w-4 h-4" />
                       </button>
@@ -551,6 +921,18 @@ const BulkUpload = () => {
                 ))}
               </TableBody>
             </Table>
+          </div>
+
+          {/* Help Text */}
+          <div className="mt-4 p-4 bg-gray-50 rounded-xl">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">Tips:</h4>
+            <ul className="text-xs text-gray-600 space-y-1">
+              <li>• <span className="text-red-600">Red rows</span>: Tag ID conflicts (duplicate or already exists)</li>
+              <li>• <span className="text-orange-600">Orange rows</span>: Missing required fields or validation errors</li>
+              <li>• Select a pen for each animal before uploading</li>
+              <li>• Use "Select pen for all" to quickly assign the same pen to all animals</li>
+              <li>• Click the X button to remove a row you don't want to upload</li>
+            </ul>
           </div>
         </Card>
       )}

@@ -88,6 +88,18 @@ const FeedRecipeForm = () => {
     setSelectedIngredient(prev => ({ ...prev, [name]: value }));
   };
 
+  // Get available stock for a given stock item
+  const getAvailableStock = (stockId) => {
+    const stock = feedItems.find(f => getId(f) == stockId);
+    return stock?.currentQty ?? 0;
+  };
+
+  // Get selected ingredient's available stock
+  const selectedStock = selectedIngredient.stockId 
+    ? feedItems.find(f => getId(f) == selectedIngredient.stockId) 
+    : null;
+  const selectedStockAvailable = selectedStock?.currentQty ?? 0;
+
   const addIngredient = () => {
     if (!selectedIngredient.stockId || !selectedIngredient.quantity) {
       toast.error('Please select ingredient and enter quantity');
@@ -99,8 +111,16 @@ const FeedRecipeForm = () => {
 
     const stockIdKey = getId(stock);
     const qty = parseFloat(selectedIngredient.quantity);
+    const availableQty = stock.currentQty ?? 0;
+
     if (qty <= 0) {
       toast.error('Quantity must be greater than 0');
+      return;
+    }
+
+    // Check if quantity exceeds available stock
+    if (qty > availableQty) {
+      toast.error(`Insufficient stock! Only ${availableQty} ${stock.unit} available for ${stock.productName}`);
       return;
     }
 
@@ -115,7 +135,7 @@ const FeedRecipeForm = () => {
       name: stock.productName,
       unit: stock.unit,
       ratePerUnit: stock.openingRatePerUnit || 0,
-      currentStock: stock.currentQty ?? 0,
+      currentStock: availableQty,
       quantity: qty,
       total: qty * (stock.openingRatePerUnit || 0)
     };
@@ -137,6 +157,14 @@ const FeedRecipeForm = () => {
 
   const updateIngredientQuantity = (index, newQty) => {
     const qty = parseFloat(newQty) || 0;
+    const ingredient = formData.ingredients[index];
+    
+    // Check if quantity exceeds available stock
+    if (qty > ingredient.currentStock) {
+      toast.error(`Insufficient stock! Only ${ingredient.currentStock} ${ingredient.unit} available for ${ingredient.name}`);
+      return;
+    }
+
     setFormData(prev => ({
       ...prev,
       ingredients: prev.ingredients.map((ing, i) => {
@@ -152,6 +180,11 @@ const FeedRecipeForm = () => {
     }));
   };
 
+  // Check if an ingredient quantity exceeds its stock
+  const isOverStock = (ingredient) => {
+    return ingredient.quantity > ingredient.currentStock;
+  };
+
   const validate = () => {
     const newErrors = {};
 
@@ -163,6 +196,20 @@ const FeedRecipeForm = () => {
     }
     if (formData.ingredients.length === 0) {
       newErrors.ingredients = 'Add at least one ingredient';
+    }
+
+    // Check if any ingredient exceeds available stock
+    const overStockItems = formData.ingredients.filter(ing => ing.quantity > ing.currentStock);
+    if (overStockItems.length > 0) {
+      const itemNames = overStockItems.map(i => i.name).join(', ');
+      newErrors.ingredients = `Quantity exceeds available stock for: ${itemNames}`;
+      toast.error(`Some ingredients exceed available stock. Please reduce quantity for: ${itemNames}`);
+    }
+
+    // Check for zero quantities
+    const zeroQtyItems = formData.ingredients.filter(ing => ing.quantity <= 0);
+    if (zeroQtyItems.length > 0) {
+      newErrors.ingredients = 'All ingredients must have quantity greater than 0';
     }
 
     setErrors(newErrors);
@@ -305,12 +352,29 @@ const FeedRecipeForm = () => {
                     value={selectedIngredient.quantity}
                     onChange={handleIngredientChange}
                     placeholder="Qty"
+                    max={selectedStockAvailable}
                   />
                 </div>
                 <Button type="button" onClick={addIngredient} icon={HiOutlinePlus}>
                   Add
                 </Button>
               </div>
+              {/* Show available stock info when ingredient is selected */}
+              {selectedStock && (
+                <div className={`mt-2 text-sm ${
+                  parseFloat(selectedIngredient.quantity) > selectedStockAvailable 
+                    ? 'text-red-600' 
+                    : 'text-gray-500'
+                }`}>
+                  {parseFloat(selectedIngredient.quantity) > selectedStockAvailable ? (
+                    <span className="flex items-center gap-1">
+                      <span className="font-medium">⚠️ Exceeds stock!</span> Only {selectedStockAvailable} {selectedStock.unit} available for {selectedStock.productName}
+                    </span>
+                  ) : (
+                    <span>Available: {selectedStockAvailable} {selectedStock.unit} of {selectedStock.productName}</span>
+                  )}
+                </div>
+              )}
               {errors.ingredients && (
                 <p className="mt-1 text-sm text-red-600">{errors.ingredients}</p>
               )}
@@ -331,47 +395,63 @@ const FeedRecipeForm = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {formData.ingredients.map((ing, index) => (
-                      <tr key={index}>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
-                              <HiOutlineBeaker className="w-4 h-4 text-amber-600" />
+                    {formData.ingredients.map((ing, index) => {
+                      const exceedsStock = isOverStock(ing);
+                      return (
+                        <tr key={index} className={exceedsStock ? 'bg-red-50' : ''}>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                                exceedsStock ? 'bg-red-100' : 'bg-amber-100'
+                              }`}>
+                                <HiOutlineBeaker className={`w-4 h-4 ${
+                                  exceedsStock ? 'text-red-600' : 'text-amber-600'
+                                }`} />
+                              </div>
+                              <div>
+                                <span className="font-medium text-sm">{ing.name}</span>
+                                {exceedsStock && (
+                                  <p className="text-xs text-red-600">Exceeds available stock!</p>
+                                )}
+                              </div>
                             </div>
-                            <span className="font-medium text-sm">{ing.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {ing.currentStock} {ing.unit}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          {formatCurrency(ing.ratePerUnit)}/{ing.unit}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              value={ing.quantity}
-                              onChange={(e) => updateIngredientQuantity(index, e.target.value)}
-                              className="w-24"
-                            />
-                            <span className="text-sm text-gray-500">{ing.unit}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm font-medium text-emerald-600">
-                          {formatCurrency(ing.total)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <button
-                            type="button"
-                            onClick={() => removeIngredient(index)}
-                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                            <HiOutlineTrash className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className={`px-4 py-3 text-sm ${exceedsStock ? 'text-red-600 font-medium' : 'text-gray-600'}`}>
+                            {ing.currentStock} {ing.unit}
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            {formatCurrency(ing.ratePerUnit)}/{ing.unit}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                value={ing.quantity}
+                                onChange={(e) => updateIngredientQuantity(index, e.target.value)}
+                                className={`w-24 ${exceedsStock ? 'border-red-500 bg-red-50' : ''}`}
+                                max={ing.currentStock}
+                              />
+                              <span className="text-sm text-gray-500">{ing.unit}</span>
+                            </div>
+                            {exceedsStock && (
+                              <p className="text-xs text-red-600 mt-1">Max: {ing.currentStock}</p>
+                            )}
+                          </td>
+                          <td className={`px-4 py-3 text-sm font-medium ${exceedsStock ? 'text-red-600' : 'text-emerald-600'}`}>
+                            {formatCurrency(ing.total)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <button
+                              type="button"
+                              onClick={() => removeIngredient(index)}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <HiOutlineTrash className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

@@ -5,7 +5,9 @@ import {
   HiOutlineArrowLeft,
   HiOutlineArrowRight,
   HiOutlineCheck,
-  HiOutlineSwitchHorizontal
+  HiOutlineSwitchHorizontal,
+  HiOutlineFilter,
+  HiOutlineX
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
 import { animalAPI, penAPI } from '../../services/mockApi';
@@ -15,7 +17,8 @@ import {
   Card,
   Button,
   SearchInput,
-  Badge
+  Badge,
+  Select
 } from '../../components/common';
 import { PageLoader } from '../../components/common/Spinner';
 
@@ -26,13 +29,14 @@ const MoveToPen = () => {
   const [loading, setLoading] = useState(true);
   const [moving, setMoving] = useState(false);
   
-  // Selection state
-  const [selectedAnimal, setSelectedAnimal] = useState(null);
+  // Selection state - now supports multiple animals
+  const [selectedAnimals, setSelectedAnimals] = useState([]);
   const [selectedPen, setSelectedPen] = useState(null);
   
-  // Search state
+  // Search and filter state
   const [animalSearch, setAnimalSearch] = useState('');
   const [penSearch, setPenSearch] = useState('');
+  const [penFilter, setPenFilter] = useState(''); // Filter animals by pen
 
   useEffect(() => {
     fetchData();
@@ -89,35 +93,97 @@ const MoveToPen = () => {
     return pens.find(p => (p._id || p.id) == penId);
   };
 
-  // Filter animals
-  const filteredAnimals = filterBySearch(animals, animalSearch, ['tagId', 'name', 'breedType']);
+  // Filter animals by search and pen filter
+  let filteredAnimals = filterBySearch(animals, animalSearch, ['tagId', 'name', 'breedType']);
   
-  // Filter pens (exclude current pen of selected animal)
-  const selectedAnimalPenId = selectedAnimal ? getAnimalPenId(selectedAnimal) : null;
+  // Apply pen filter
+  if (penFilter === 'unassigned') {
+    filteredAnimals = filteredAnimals.filter(a => !getAnimalPenId(a));
+  } else if (penFilter) {
+    filteredAnimals = filteredAnimals.filter(a => getAnimalPenId(a) == penFilter);
+  }
+  
+  // Filter pens (exclude current pen if all selected animals are from same pen)
+  const selectedAnimalPenIds = [...new Set(selectedAnimals.map(a => getAnimalPenId(a)))];
   const filteredPens = pens
-    .filter(p => !selectedAnimal || (p._id || p.id) != selectedAnimalPenId)
+    .filter(p => {
+      // If all selected animals are from the same pen, exclude that pen
+      if (selectedAnimalPenIds.length === 1 && selectedAnimalPenIds[0]) {
+        return getId(p) != selectedAnimalPenIds[0];
+      }
+      return true;
+    })
     .filter(p => 
       penSearch === '' || 
       p.name.toLowerCase().includes(penSearch.toLowerCase()) ||
       p.type.toLowerCase().includes(penSearch.toLowerCase())
     );
 
-  const handleMoveAnimal = async () => {
-    if (!selectedAnimal || !selectedPen) {
-      toast.error('Please select both an animal and a destination pen');
+  // Toggle animal selection
+  const toggleAnimalSelection = (animal) => {
+    const animalId = getId(animal);
+    setSelectedAnimals(prev => {
+      const isSelected = prev.some(a => getId(a) === animalId);
+      if (isSelected) {
+        return prev.filter(a => getId(a) !== animalId);
+      } else {
+        return [...prev, animal];
+      }
+    });
+  };
+
+  // Select all visible animals
+  const selectAllAnimals = () => {
+    const allIds = new Set(filteredAnimals.map(a => getId(a)));
+    const currentIds = new Set(selectedAnimals.map(a => getId(a)));
+    const allSelected = filteredAnimals.every(a => currentIds.has(getId(a)));
+    
+    if (allSelected) {
+      // Deselect all filtered
+      setSelectedAnimals(prev => prev.filter(a => !allIds.has(getId(a))));
+    } else {
+      // Select all filtered (merge with existing)
+      const newAnimals = filteredAnimals.filter(a => !currentIds.has(getId(a)));
+      setSelectedAnimals(prev => [...prev, ...newAnimals]);
+    }
+  };
+
+  // Clear all selections
+  const clearSelection = () => {
+    setSelectedAnimals([]);
+    setSelectedPen(null);
+  };
+
+  const handleMoveAnimals = async () => {
+    if (selectedAnimals.length === 0 || !selectedPen) {
+      toast.error('Please select at least one animal and a destination pen');
+      return;
+    }
+
+    const penId = getId(selectedPen);
+    const capacity = getPenCapacity(selectedPen);
+    const currentCount = getPenAnimalCount(selectedPen);
+    const spotsAvailable = capacity - currentCount;
+
+    if (capacity > 0 && selectedAnimals.length > spotsAvailable) {
+      toast.error(`Not enough space! Only ${spotsAvailable} spots available in ${selectedPen.name}`);
       return;
     }
 
     setMoving(true);
     try {
-      const animalId = getId(selectedAnimal);
-      const penId = getId(selectedPen);
-      await animalAPI.update(animalId, { pen: penId });
-      toast.success(`${selectedAnimal.name} moved to ${selectedPen.name}!`);
+      // Move all selected animals
+      const movePromises = selectedAnimals.map(animal => 
+        animalAPI.update(getId(animal), { pen: penId })
+      );
+      await Promise.all(movePromises);
+
+      toast.success(`${selectedAnimals.length} animal(s) moved to ${selectedPen.name}!`);
       
-      // Update local state (backend uses 'pen' field)
+      // Update local state
+      const movedIds = new Set(selectedAnimals.map(a => getId(a)));
       setAnimals(prev => prev.map(a => 
-        getId(a) === animalId ? { ...a, pen: penId, penId } : a
+        movedIds.has(getId(a)) ? { ...a, pen: penId, penId } : a
       ));
       
       // Refetch pens so Total Capacity, Available Spots and per-pen counts reflect actual DB
@@ -125,10 +191,10 @@ const MoveToPen = () => {
       if (pensRes.success) setPens(pensRes.data);
       
       // Reset selections
-      setSelectedAnimal(null);
+      setSelectedAnimals([]);
       setSelectedPen(null);
     } catch (error) {
-      toast.error('Failed to move animal');
+      toast.error('Failed to move animals');
     } finally {
       setMoving(false);
     }
@@ -148,6 +214,17 @@ const MoveToPen = () => {
     return 'text-emerald-600 bg-emerald-100';
   };
 
+  // Check if all filtered animals are selected
+  const allFilteredSelected = filteredAnimals.length > 0 && 
+    filteredAnimals.every(a => selectedAnimals.some(sa => getId(sa) === getId(a)));
+
+  // Build pen filter options
+  const penFilterOptions = [
+    { value: '', label: 'All Pens' },
+    { value: 'unassigned', label: 'Unassigned' },
+    ...pens.map(p => ({ value: getId(p), label: `${p.name} (${getPenAnimalCount(p)} animals)` }))
+  ];
+
   if (loading) {
     return <PageLoader />;
   }
@@ -155,8 +232,8 @@ const MoveToPen = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Move Animal to Pen"
-        subtitle="Transfer animals between pens easily"
+        title="Move Animals to Pen"
+        subtitle="Transfer one or more animals between pens"
         breadcrumbs={[
           { label: 'Animals', path: '/dashboard/animals' },
           { label: 'Move to Pen' }
@@ -173,29 +250,66 @@ const MoveToPen = () => {
       />
 
       {/* Transfer Summary Card */}
-      {(selectedAnimal || selectedPen) && (
+      {(selectedAnimals.length > 0 || selectedPen) && (
         <Card className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200">
           <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
-            {/* Selected Animal */}
+            {/* Selected Animals */}
             <div className={`flex-1 w-full lg:w-auto p-4 rounded-xl transition-all ${
-              selectedAnimal ? 'bg-white shadow-sm' : 'bg-gray-100 border-2 border-dashed border-gray-300'
+              selectedAnimals.length > 0 ? 'bg-white shadow-sm' : 'bg-gray-100 border-2 border-dashed border-gray-300'
             }`}>
-              {selectedAnimal ? (
-                <div className="flex items-center space-x-4">
-                  <div className="w-14 h-14 rounded-xl bg-emerald-100 flex items-center justify-center">
-                    <GiSheep className="w-8 h-8 text-emerald-600" />
+              {selectedAnimals.length > 0 ? (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center">
+                        <GiSheep className="w-7 h-7 text-emerald-600" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-900">
+                          {selectedAnimals.length} Animal{selectedAnimals.length > 1 ? 's' : ''} Selected
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {selectedAnimalPenIds.length === 1 
+                            ? `From: ${getPenName(selectedAnimalPenIds[0])}`
+                            : `From ${selectedAnimalPenIds.length} different pens`
+                          }
+                        </p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={clearSelection}
+                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                      title="Clear selection"
+                    >
+                      <HiOutlineX className="w-5 h-5 text-gray-500" />
+                    </button>
                   </div>
-                  <div>
-                    <p className="font-semibold text-gray-900">{selectedAnimal.name}</p>
-                    <p className="text-sm text-gray-500">{selectedAnimal.tagId}</p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Current: {getAnimalPenName(selectedAnimal)}
-                    </p>
+                  {/* Show first few selected animals */}
+                  <div className="flex flex-wrap gap-2">
+                    {selectedAnimals.slice(0, 5).map(animal => (
+                      <span 
+                        key={getId(animal)} 
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium"
+                      >
+                        {animal.tagId}
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); toggleAnimalSelection(animal); }}
+                          className="hover:bg-emerald-200 rounded-full p-0.5"
+                        >
+                          <HiOutlineX className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                    {selectedAnimals.length > 5 && (
+                      <span className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
+                        +{selectedAnimals.length - 5} more
+                      </span>
+                    )}
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-4">
-                  <p className="text-gray-500">Select an animal</p>
+                  <p className="text-gray-500">Select animals to move</p>
                 </div>
               )}
             </div>
@@ -205,14 +319,14 @@ const MoveToPen = () => {
               <div className="w-12 h-12 rounded-full bg-emerald-600 flex items-center justify-center shadow-lg">
                 <HiOutlineArrowRight className="w-6 h-6 text-white" />
               </div>
-              {selectedAnimal && selectedPen && (
+              {selectedAnimals.length > 0 && selectedPen && (
                 <Button
                   size="sm"
                   icon={HiOutlineSwitchHorizontal}
-                  onClick={handleMoveAnimal}
+                  onClick={handleMoveAnimals}
                   loading={moving}
                 >
-                  Move Now
+                  Move {selectedAnimals.length > 1 ? `All ${selectedAnimals.length}` : 'Now'}
                 </Button>
               )}
             </div>
@@ -249,16 +363,60 @@ const MoveToPen = () => {
         {/* Animals List */}
         <Card>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-800">Select Animal</h3>
-            <Badge variant="info">{filteredAnimals.length} animals</Badge>
+            <h3 className="text-lg font-semibold text-gray-800">Select Animals</h3>
+            <div className="flex items-center gap-2">
+              {selectedAnimals.length > 0 && (
+                <Badge variant="success">{selectedAnimals.length} selected</Badge>
+              )}
+              <Badge variant="info">{filteredAnimals.length} animals</Badge>
+            </div>
           </div>
           
-          <div className="mb-4">
+          {/* Search and Filter */}
+          <div className="space-y-3 mb-4">
             <SearchInput
               value={animalSearch}
               onChange={setAnimalSearch}
               placeholder="Search by Tag ID, Name, or Breed..."
             />
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <Select
+                  name="penFilter"
+                  value={penFilter}
+                  onChange={(e) => setPenFilter(e.target.value)}
+                  options={penFilterOptions}
+                  placeholder="Filter by pen"
+                />
+              </div>
+              {penFilter && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setPenFilter('')}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Select All / Clear */}
+          <div className="flex items-center justify-between mb-3 pb-3 border-b">
+            <button
+              onClick={selectAllAnimals}
+              className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
+            >
+              {allFilteredSelected ? 'Deselect All' : 'Select All'} ({filteredAnimals.length})
+            </button>
+            {selectedAnimals.length > 0 && (
+              <button
+                onClick={() => setSelectedAnimals([])}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                Clear Selection
+              </button>
+            )}
           </div>
 
           <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
@@ -269,12 +427,12 @@ const MoveToPen = () => {
             ) : (
               filteredAnimals.map((animal) => {
                 const animalId = getId(animal);
-                const isSelected = getId(selectedAnimal) === animalId;
+                const isSelected = selectedAnimals.some(a => getId(a) === animalId);
                 
                 return (
                   <div
                     key={animalId}
-                    onClick={() => setSelectedAnimal(isSelected ? null : animal)}
+                    onClick={() => toggleAnimalSelection(animal)}
                     className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
                       isSelected 
                         ? 'border-emerald-500 bg-emerald-50 shadow-md' 
@@ -283,10 +441,18 @@ const MoveToPen = () => {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-4">
-                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                        {/* Checkbox */}
+                        <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
+                          isSelected 
+                            ? 'bg-emerald-500 border-emerald-500' 
+                            : 'border-gray-300 bg-white'
+                        }`}>
+                          {isSelected && <HiOutlineCheck className="w-4 h-4 text-white" />}
+                        </div>
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
                           isSelected ? 'bg-emerald-200' : 'bg-emerald-100'
                         }`}>
-                          <GiSheep className={`w-6 h-6 ${isSelected ? 'text-emerald-700' : 'text-emerald-600'}`} />
+                          <GiSheep className={`w-5 h-5 ${isSelected ? 'text-emerald-700' : 'text-emerald-600'}`} />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
@@ -308,11 +474,6 @@ const MoveToPen = () => {
                           </div>
                         </div>
                       </div>
-                      {isSelected && (
-                        <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center">
-                          <HiOutlineCheck className="w-5 h-5 text-white" />
-                        </div>
-                      )}
                     </div>
                   </div>
                 );
@@ -336,10 +497,29 @@ const MoveToPen = () => {
             />
           </div>
 
+          {/* Capacity warning if selected animals exceed available space */}
+          {selectedAnimals.length > 0 && selectedPen && (
+            <div className={`mb-4 p-3 rounded-lg ${
+              getPenSpotsAvailable(selectedPen) >= selectedAnimals.length
+                ? 'bg-emerald-50 text-emerald-700'
+                : 'bg-red-50 text-red-700'
+            }`}>
+              {getPenSpotsAvailable(selectedPen) >= selectedAnimals.length ? (
+                <p className="text-sm">
+                  ✓ {selectedPen.name} has {getPenSpotsAvailable(selectedPen)} spots available for {selectedAnimals.length} animal(s)
+                </p>
+              ) : (
+                <p className="text-sm">
+                  ⚠ Not enough space! {selectedPen.name} only has {getPenSpotsAvailable(selectedPen)} spots for {selectedAnimals.length} animal(s)
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
             {filteredPens.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
-                {selectedAnimal ? 'No other pens available' : 'No pens found'}
+                {selectedAnimals.length > 0 ? 'No other pens available' : 'No pens found'}
               </div>
             ) : (
               filteredPens.map((pen) => {
@@ -349,6 +529,7 @@ const MoveToPen = () => {
                 const animalCount = getPenAnimalCount(pen);
                 const spotsAvailable = getPenSpotsAvailable(pen);
                 const isFull = capacity > 0 && animalCount >= capacity;
+                const hasEnoughSpace = spotsAvailable >= selectedAnimals.length;
                 const percentage = capacity > 0 ? Math.round((animalCount / capacity) * 100) : 0;
                 
                 return (
@@ -360,7 +541,9 @@ const MoveToPen = () => {
                         ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed' 
                         : isSelected 
                           ? 'border-emerald-500 bg-emerald-50 shadow-md cursor-pointer' 
-                          : 'border-gray-200 hover:border-emerald-300 hover:bg-gray-50 cursor-pointer'
+                          : selectedAnimals.length > 0 && !hasEnoughSpace
+                            ? 'border-orange-200 bg-orange-50 cursor-pointer'
+                            : 'border-gray-200 hover:border-emerald-300 hover:bg-gray-50 cursor-pointer'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -377,6 +560,9 @@ const MoveToPen = () => {
                             <p className="font-semibold text-gray-900">{pen.name}</p>
                             {isFull && (
                               <Badge variant="danger" className="text-xs">Full</Badge>
+                            )}
+                            {!isFull && selectedAnimals.length > 0 && !hasEnoughSpace && (
+                              <Badge variant="warning" className="text-xs">Low Space</Badge>
                             )}
                           </div>
                           <p className="text-sm text-gray-500">{pen.type}</p>
