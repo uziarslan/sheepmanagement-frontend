@@ -10,26 +10,27 @@ const AuthProvider = ({ children }) => {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const response = await authService.getUser();
-        if (response && response.success && response.user) {
-          setUser(response.user);
+        const userData = await authService.getUser();
+        if (userData) {
+          setUser(userData);
         }
       } catch (error) {
         console.error("Error fetching user:", error);
       } finally {
         setIsLoading(false);
       }
-    }
+    };
     fetchUser();
   }, []);
-
 
   const login = async (userData) => {
     setIsLoading(true);
     try {
       const response = await authService.login(userData);
-      if (response.data && response.data.user) {
-        setUser(response.data.user);
+      // Handle new API response structure: response.data.data.user
+      const user = response.data?.data?.user || response.data?.user;
+      if (user) {
+        setUser(user);
       }
       setIsLoading(false);
       return response;
@@ -43,8 +44,10 @@ const AuthProvider = ({ children }) => {
     setIsLoading(true);
     try {
       const response = await authService.register(userData);
-      if (response.data && response.data.user) {
-        setUser(response.data.user);
+      // Handle new API response structure: response.data.data.user
+      const user = response.data?.data?.user || response.data?.user;
+      if (user) {
+        setUser(user);
       }
       setIsLoading(false);
       return response;
@@ -54,29 +57,13 @@ const AuthProvider = ({ children }) => {
     }
   };
 
-  const googleLogin = async (credentialResponse) => {
+  const logout = async () => {
     setIsLoading(true);
-    try {
-      const response = await authService.googleLogin(credentialResponse);
-      if (response.data && response.data.user) {
-        setUser(response.data.user);
-      }
-      setIsLoading(false);
-      return response;
-    } catch (error) {
-      setIsLoading(false);
-      throw error;
-    }
-  }
-
-  const logout = () => {
-    setIsLoading(true);
-    authService.logout();
+    await authService.logout();
     setUser(null);
     setIsLoading(false);
     window.location.href = "/login";
   };
-
 
   return (
     <AuthContext.Provider
@@ -84,7 +71,6 @@ const AuthProvider = ({ children }) => {
         user,
         login,
         register,
-        googleLogin,
         logout,
         isLoading,
         setIsLoading,

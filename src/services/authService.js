@@ -1,7 +1,5 @@
 import axiosInstance from "./axiosInstance";
 
-const API_URL = "/api/auth";
-
 // 👇 Util to notify extension
 const notifyExtensionWithToken = (token) => {
   try {
@@ -12,65 +10,103 @@ const notifyExtensionWithToken = (token) => {
 };
 
 const register = async (userData) => {
-  const response = await axiosInstance.post(
-    `${API_URL}/user/signup`,
-    userData
-  );
-  if (response.data && response.data.token) {
-    const token = response.data.token;
-    localStorage.setItem("token", token);
-    notifyExtensionWithToken(token);
+  const response = await axiosInstance.post("/auth/register", {
+    ...userData,
+    confirmPassword: userData.password
+  });
+  
+  if (response.data?.data?.tokens) {
+    const { accessToken, refreshToken } = response.data.data.tokens;
+    localStorage.setItem("token", accessToken);
+    localStorage.setItem("refreshToken", refreshToken);
+    notifyExtensionWithToken(accessToken);
   }
+  
   return response;
 };
 
 const login = async (userData) => {
-  const response = await axiosInstance.post(`${API_URL}/user/login`, userData);
-  if (response.data && response.data.token) {
-    const token = response.data.token;
-    localStorage.setItem("token", token);
-    notifyExtensionWithToken(token);
+  const response = await axiosInstance.post("/auth/login", userData);
+  
+  if (response.data?.data?.tokens) {
+    const { accessToken, refreshToken } = response.data.data.tokens;
+    localStorage.setItem("token", accessToken);
+    localStorage.setItem("refreshToken", refreshToken);
+    notifyExtensionWithToken(accessToken);
   }
+  
   return response;
 };
 
-const logout = () => {
-  localStorage.removeItem("token");
+const logout = async () => {
+  try {
+    await axiosInstance.post("/auth/logout");
+  } catch (error) {
+    // Ignore logout errors
+  } finally {
+    localStorage.removeItem("token");
+    localStorage.removeItem("refreshToken");
+  }
 };
 
 const getUser = async () => {
   const token = localStorage.getItem("token");
   if (token) {
     try {
-      const response = await axiosInstance.get(`${API_URL}/user`);
-      return response.data;
+      const response = await axiosInstance.get("/auth/me");
+      return response.data?.data || response.data;
     } catch (error) {
       console.error("Error fetching user:", error);
       localStorage.removeItem("token");
+      localStorage.removeItem("refreshToken");
       return null;
     }
   }
   return null;
 };
 
-const googleLogin = async (credentialResponse) => {
-  const response = await axiosInstance.post(`${API_URL}/google-login`, {
-    token: credentialResponse.credential
-  });
-  if (response.data && response.data.token) {
-    const token = response.data.token;
-    localStorage.setItem("token", token);
-    notifyExtensionWithToken(token);
+const refreshToken = async () => {
+  const storedRefreshToken = localStorage.getItem("refreshToken");
+  if (!storedRefreshToken) {
+    throw new Error("No refresh token available");
   }
+  
+  const response = await axiosInstance.post("/auth/refresh-token", {
+    refreshToken: storedRefreshToken
+  });
+  
+  if (response.data?.data) {
+    const { accessToken, refreshToken: newRefreshToken } = response.data.data;
+    localStorage.setItem("token", accessToken);
+    localStorage.setItem("refreshToken", newRefreshToken);
+    notifyExtensionWithToken(accessToken);
+  }
+  
   return response;
-}
+};
+
+const changePassword = async (currentPassword, newPassword) => {
+  const response = await axiosInstance.put("/auth/change-password", {
+    currentPassword,
+    newPassword,
+    confirmPassword: newPassword
+  });
+  return response;
+};
+
+const updateProfile = async (profileData) => {
+  const response = await axiosInstance.put("/auth/profile", profileData);
+  return response;
+};
 
 const authService = {
   register,
   login,
   logout,
   getUser,
-  googleLogin
+  refreshToken,
+  changePassword,
+  updateProfile
 };
 
 export default authService;

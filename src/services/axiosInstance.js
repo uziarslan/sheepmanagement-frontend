@@ -1,7 +1,7 @@
 import axios from "axios";
 import authService from "./authService";
 
-const END_POINT = process.env.REACT_APP_END_POINT || 'http://localhost:4000';
+const END_POINT = process.env.REACT_APP_END_POINT || 'http://localhost:5000/api';
 
 const axiosInstance = axios.create({
   baseURL: END_POINT,
