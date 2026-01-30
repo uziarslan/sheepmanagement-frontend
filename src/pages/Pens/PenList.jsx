@@ -44,14 +44,16 @@ const PenList = () => {
     }
   };
 
+  const getPenId = (pen) => pen?._id || pen?.id;
+
   const handleDelete = async () => {
     if (!deleteModal.pen) return;
-    
+    const penId = getPenId(deleteModal.pen);
     setDeleting(true);
     try {
-      await penAPI.delete(deleteModal.pen.id);
+      await penAPI.delete(penId);
       toast.success('Pen deleted successfully');
-      setPens(prev => prev.filter(p => p.id !== deleteModal.pen.id));
+      setPens(prev => prev.filter(p => getPenId(p) !== penId));
       setDeleteModal({ open: false, pen: null });
     } catch (error) {
       toast.error(error.message || 'Failed to delete pen');
@@ -108,9 +110,9 @@ const PenList = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredPens.map((pen) => (
               <div
-                key={pen.id}
+                key={getPenId(pen)}
                 className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-lg hover:border-emerald-200 transition-all cursor-pointer"
-                onClick={() => navigate(`/dashboard/pens/${pen.id}`)}
+                onClick={() => navigate(`/dashboard/pens/${getPenId(pen)}`)}
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
@@ -164,7 +166,7 @@ const PenList = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigate(`/dashboard/pens/${pen.id}/edit`);
+                      navigate(`/dashboard/pens/${getPenId(pen)}/edit`);
                     }}
                     className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                     title="Edit"

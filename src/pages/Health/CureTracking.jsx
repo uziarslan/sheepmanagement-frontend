@@ -41,6 +41,12 @@ const CureTracking = () => {
     status: '' // Cured, Uncured, or empty for all
   });
 
+  // Helper to get id from item (supports both _id and id)
+  const getId = (item) => item?._id ?? item?.id;
+
+  // Helper to check if cured (supports both 'cured' and 'cureStatus' fields)
+  const isCured = (treatment) => treatment.cured === 'Yes' || treatment.cureStatus === 'Cured';
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -72,11 +78,13 @@ const CureTracking = () => {
   };
 
   const markAsCured = async (treatment) => {
+    const treatmentId = getId(treatment);
+    const tagId = treatment.tagId || treatment.animalTagId;
     try {
-      const response = await healthAPI.updateTreatment(treatment.id, { ...treatment, cured: 'Yes' });
+      const response = await healthAPI.updateTreatment(treatmentId, { cureStatus: 'Cured' });
       if (response.success) {
-        setTreatments(prev => prev.map(t => t.id === treatment.id ? { ...t, cured: 'Yes' } : t));
-        toast.success(`${treatment.tagId} marked as cured`);
+        setTreatments(prev => prev.map(t => getId(t) === treatmentId ? { ...t, cured: 'Yes', cureStatus: 'Cured' } : t));
+        toast.success(`${tagId} marked as cured`);
       }
     } catch (error) {
       toast.error('Failed to update status');
@@ -97,14 +105,14 @@ const CureTracking = () => {
     );
   }
   if (filters.status === 'Cured') {
-    filteredTreatments = filteredTreatments.filter(t => t.cured === 'Yes');
+    filteredTreatments = filteredTreatments.filter(t => isCured(t));
   } else if (filters.status === 'Uncured') {
-    filteredTreatments = filteredTreatments.filter(t => t.cured === 'No');
+    filteredTreatments = filteredTreatments.filter(t => !isCured(t));
   }
 
   // Stats
-  const curedAnimals = treatments.filter(t => t.cured === 'Yes');
-  const uncuredAnimals = treatments.filter(t => t.cured === 'No');
+  const curedAnimals = treatments.filter(t => isCured(t));
+  const uncuredAnimals = treatments.filter(t => !isCured(t));
   const cureRate = treatments.length > 0 
     ? ((curedAnimals.length / treatments.length) * 100).toFixed(1) 
     : 0;
@@ -219,18 +227,18 @@ const CureTracking = () => {
             <div className="flex items-center gap-2 mb-4">
               <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
               <h4 className="font-semibold text-gray-800">
-                Cured Animals ({filteredTreatments.filter(t => t.cured === 'Yes').length})
+                Cured Animals ({filteredTreatments.filter(t => isCured(t)).length})
               </h4>
             </div>
             <div className="space-y-3 max-h-[500px] overflow-y-auto">
-              {filteredTreatments.filter(t => t.cured === 'Yes').length === 0 ? (
+              {filteredTreatments.filter(t => isCured(t)).length === 0 ? (
                 <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-xl">
                   No cured animals found
                 </div>
               ) : (
-                filteredTreatments.filter(t => t.cured === 'Yes').map((treatment) => (
+                filteredTreatments.filter(t => isCured(t)).map((treatment) => (
                   <div
-                    key={treatment.id}
+                    key={getId(treatment)}
                     className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl"
                   >
                     <div className="flex items-center justify-between">
@@ -267,18 +275,18 @@ const CureTracking = () => {
             <div className="flex items-center gap-2 mb-4">
               <div className="w-3 h-3 rounded-full bg-red-500"></div>
               <h4 className="font-semibold text-gray-800">
-                Under Treatment ({filteredTreatments.filter(t => t.cured === 'No').length})
+                Under Treatment ({filteredTreatments.filter(t => !isCured(t)).length})
               </h4>
             </div>
             <div className="space-y-3 max-h-[500px] overflow-y-auto">
-              {filteredTreatments.filter(t => t.cured === 'No').length === 0 ? (
+              {filteredTreatments.filter(t => !isCured(t)).length === 0 ? (
                 <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-xl">
                   No animals under treatment
                 </div>
               ) : (
-                filteredTreatments.filter(t => t.cured === 'No').map((treatment) => (
+                filteredTreatments.filter(t => !isCured(t)).map((treatment) => (
                   <div
-                    key={treatment.id}
+                    key={getId(treatment)}
                     className="p-4 bg-red-50 border border-red-200 rounded-xl"
                   >
                     <div className="flex items-center justify-between">
@@ -345,7 +353,7 @@ const CureTracking = () => {
               />
             ) : (
               filteredTreatments.map((treatment) => (
-                <TableRow key={treatment.id}>
+                <TableRow key={getId(treatment)}>
                   <TableCell>
                     <span className="text-sm">{formatDate(treatment.date)}</span>
                   </TableCell>
@@ -375,13 +383,13 @@ const CureTracking = () => {
                     </span>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={treatment.cured === 'Yes' ? 'success' : 'danger'}>
-                      {treatment.cured === 'Yes' ? 'Cured' : 'Under Treatment'}
+                    <Badge variant={isCured(treatment) ? 'success' : 'danger'}>
+                      {isCured(treatment) ? 'Cured' : 'Under Treatment'}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
-                      {treatment.cured === 'No' && (
+                      {!isCured(treatment) && (
                         <button
                           onClick={() => markAsCured(treatment)}
                           className="p-2 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
@@ -438,8 +446,8 @@ const CureTracking = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Status</p>
-                <Badge variant={viewModal.data.cured === 'Yes' ? 'success' : 'danger'}>
-                  {viewModal.data.cured === 'Yes' ? 'Cured' : 'Under Treatment'}
+                <Badge variant={isCured(viewModal.data) ? 'success' : 'danger'}>
+                  {isCured(viewModal.data) ? 'Cured' : 'Under Treatment'}
                 </Badge>
               </div>
             </div>
@@ -489,7 +497,7 @@ const CureTracking = () => {
               </div>
             )}
 
-            {viewModal.data.cured === 'No' && (
+            {!isCured(viewModal.data) && (
               <div className="pt-4 border-t">
                 <Button
                   icon={HiOutlineCheck}

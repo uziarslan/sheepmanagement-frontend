@@ -37,6 +37,9 @@ const FeedRecipeList = () => {
   const [deleteModal, setDeleteModal] = useState({ open: false, item: null });
   const [deleting, setDeleting] = useState(false);
 
+  // Helper to get id from item (supports both _id and id)
+  const getId = (item) => item?._id ?? item?.id;
+
   useEffect(() => {
     fetchRecipes();
   }, []);
@@ -56,12 +59,12 @@ const FeedRecipeList = () => {
 
   const handleDelete = async () => {
     if (!deleteModal.item) return;
-    
+    const itemId = getId(deleteModal.item);
     setDeleting(true);
     try {
-      await feedAPI.deleteRecipe(deleteModal.item.id);
+      await feedAPI.deleteRecipe(itemId);
       toast.success('Recipe deleted successfully');
-      setRecipes(prev => prev.filter(r => r.id !== deleteModal.item.id));
+      setRecipes(prev => prev.filter(r => getId(r) !== itemId));
       setDeleteModal({ open: false, item: null });
     } catch (error) {
       toast.error('Failed to delete recipe');
@@ -150,7 +153,7 @@ const FeedRecipeList = () => {
               />
             ) : (
               filteredRecipes.map((recipe) => (
-                <TableRow key={recipe.id}>
+                <TableRow key={getId(recipe)}>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
@@ -189,7 +192,7 @@ const FeedRecipeList = () => {
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
                       <button
-                        onClick={() => navigate(`/dashboard/feed/apply?recipe=${recipe.id}`)}
+                        onClick={() => navigate(`/dashboard/feed/apply?recipe=${getId(recipe)}`)}
                         className="p-2 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                         title="Apply Recipe"
                       >
@@ -203,7 +206,7 @@ const FeedRecipeList = () => {
                         <HiOutlineEye className="w-5 h-5" />
                       </button>
                       <button
-                        onClick={() => navigate(`/dashboard/feed/recipes/${recipe.id}/edit`)}
+                        onClick={() => navigate(`/dashboard/feed/recipes/${getId(recipe)}/edit`)}
                         className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                         title="Edit"
                       >
@@ -305,7 +308,7 @@ const FeedRecipeList = () => {
                 icon={HiOutlinePlay}
                 onClick={() => {
                   setViewModal({ open: false, data: null });
-                  navigate(`/dashboard/feed/apply?recipe=${viewModal.data.id}`);
+                  navigate(`/dashboard/feed/apply?recipe=${getId(viewModal.data)}`);
                 }}
               >
                 Apply This Recipe

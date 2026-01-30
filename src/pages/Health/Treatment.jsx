@@ -71,6 +71,12 @@ const Treatment = () => {
 
   const [errors, setErrors] = useState({});
 
+  // Helper to get id from item (supports both _id and id)
+  const getId = (item) => item?._id ?? item?.id;
+  // Helper to check cured status (backend uses cureStatus: 'Cured', form uses cured: 'Yes')
+  const isCured = (treatment) =>
+    treatment?.cureStatus === 'Cured' || treatment?.cured === 'Yes';
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -105,7 +111,7 @@ const Treatment = () => {
 
     // Auto-set unit from medicine data
     if (name === 'medicineId' && value) {
-      const medicine = medicines.find(m => m.id === parseInt(value));
+      const medicine = medicines.find(m => getId(m) == value);
       if (medicine) {
         setSelectedMedicine(prev => ({ ...prev, unit: medicine.unit }));
       }
@@ -118,22 +124,24 @@ const Treatment = () => {
       return;
     }
 
-    const medicine = medicines.find(m => m.id === parseInt(selectedMedicine.medicineId));
+    const medicine = medicines.find(m => getId(m) == selectedMedicine.medicineId);
     if (!medicine) return;
 
+    const medicineIdKey = getId(medicine);
     const qty = parseFloat(selectedMedicine.quantity);
-    if (qty > medicine.currentQty) {
-      toast.error(`Insufficient stock. Available: ${medicine.currentQty} ${medicine.unit}`);
+    const currentQty = Number(medicine.currentQty ?? 0);
+    if (qty > currentQty) {
+      toast.error(`Insufficient stock. Available: ${currentQty} ${medicine.unit}`);
       return;
     }
 
     const medicineEntry = {
-      medicineId: medicine.id,
+      medicineId: medicineIdKey,
       name: medicine.productName,
-      rate: medicine.openingRatePerUnit,
+      rate: medicine.openingRatePerUnit || 0,
       unit: selectedMedicine.unit,
       quantity: qty,
-      total: qty * medicine.openingRatePerUnit
+      total: qty * (medicine.openingRatePerUnit || 0)
     };
 
     setFormData(prev => ({
@@ -169,21 +177,39 @@ const Treatment = () => {
 
     setSubmitting(true);
     try {
-      const animal = animals.find(a => a.id === parseInt(formData.animalId));
+      const animalIdKey = String(formData.animalId).trim();
+      const animal = animals.find(a => getId(a) == animalIdKey);
       
+      // Build backend-compatible payload
       const treatmentData = {
-        ...formData,
-        animalId: parseInt(formData.animalId),
-        tagId: animal?.tagId,
+        date: formData.date,
+        animal: animalIdKey,
+        animalTagId: animal?.tagId,
         animalName: animal?.name,
-        totalAmount: formData.medicines.reduce((sum, m) => sum + m.total, 0)
+        findings: formData.findings || null,
+        type: formData.type,
+        diagnosis: formData.diagnosis,
+        medicines: formData.medicines.map(m => ({
+          medicine: m.medicineId || m.medicine,
+          medicineName: m.name,
+          rate: m.rate,
+          unit: m.unit,
+          quantity: m.quantity,
+          total: m.total
+        })),
+        duration: formData.duration ? parseInt(formData.duration, 10) || null : null,
+        cureStatus: formData.cured === 'Yes' ? 'Cured' : 'In Treatment',
+        comments: formData.comments || null
       };
 
       let response;
       if (isEdit) {
-        response = await healthAPI.updateTreatment(editId, treatmentData);
+        response = await healthAPI.updateTreatment(editId, { 
+          cureStatus: treatmentData.cureStatus,
+          comments: treatmentData.comments 
+        });
         if (response.success) {
-          setTreatments(prev => prev.map(t => t.id === editId ? response.data : t));
+          setTreatments(prev => prev.map(t => getId(t) === editId ? response.data : t));
           toast.success('Treatment updated successfully');
         }
       } else {
@@ -204,12 +230,12 @@ const Treatment = () => {
 
   const handleDelete = async () => {
     if (!deleteModal.item) return;
-    
+    const itemId = getId(deleteModal.item);
     setDeleting(true);
     try {
-      await healthAPI.deleteTreatment(deleteModal.item.id);
+      await healthAPI.deleteTreatment(itemId);
       toast.success('Treatment record deleted');
-      setTreatments(prev => prev.filter(t => t.id !== deleteModal.item.id));
+      setTreatments(prev => prev.filter(t => getId(t) !== itemId));
       setDeleteModal({ open: false, item: null });
     } catch (error) {
       toast.error('Failed to delete record');
@@ -221,16 +247,19 @@ const Treatment = () => {
   const openModal = (treatment = null) => {
     if (treatment) {
       setIsEdit(true);
-      setEditId(treatment.id);
+      setEditId(getId(treatment));
+      // Backend uses 'animal' and 'cureStatus', transform for form
+      const animalRef = treatment.animal?._id || treatment.animal || treatment.animalId;
+      const curedValue = treatment.cureStatus === 'Cured' || treatment.cured === 'Yes' ? 'Yes' : 'No';
       setFormData({
-        date: treatment.date,
-        animalId: treatment.animalId.toString(),
+        date: treatment.date?.split?.('T')?.[0] || treatment.date,
+        animalId: animalRef?.toString() || '',
         findings: treatment.findings || '',
         type: treatment.type,
         diagnosis: treatment.diagnosis,
         medicines: treatment.medicines || [],
-        duration: treatment.duration || '',
-        cured: treatment.cured || 'No',
+        duration: treatment.duration?.toString() || '',
+        cured: curedValue,
         comments: treatment.comments || ''
       });
     } else {
@@ -271,10 +300,11 @@ const Treatment = () => {
   };
 
   const markAsCured = async (treatment) => {
+    const treatmentId = getId(treatment);
     try {
-      const response = await healthAPI.updateTreatment(treatment.id, { ...treatment, cured: 'Yes' });
+      const response = await healthAPI.updateTreatment(treatmentId, { cureStatus: 'Cured' });
       if (response.success) {
-        setTreatments(prev => prev.map(t => t.id === treatment.id ? { ...t, cured: 'Yes' } : t));
+        setTreatments(prev => prev.map(t => getId(t) === treatmentId ? { ...t, cured: 'Yes', cureStatus: 'Cured' } : t));
         toast.success('Animal marked as cured');
       }
     } catch (error) {
@@ -290,9 +320,9 @@ const Treatment = () => {
 
   const totalMedicineAmount = formData.medicines.reduce((sum, m) => sum + m.total, 0);
 
-  // Summary stats
-  const curedCount = treatments.filter(t => t.cured === 'Yes').length;
-  const uncuredCount = treatments.filter(t => t.cured === 'No').length;
+  // Summary stats (support both cureStatus and cured from API)
+  const curedCount = treatments.filter(t => isCured(t)).length;
+  const uncuredCount = treatments.filter(t => !isCured(t)).length;
   const totalCost = treatments.reduce((sum, t) => sum + (t.totalAmount || 0), 0);
 
   if (loading) {
@@ -375,7 +405,7 @@ const Treatment = () => {
               />
             ) : (
               filteredTreatments.map((treatment) => (
-                <TableRow key={treatment.id}>
+                <TableRow key={getId(treatment)}>
                   <TableCell>
                     <span className="text-sm">{formatDate(treatment.date)}</span>
                   </TableCell>
@@ -407,13 +437,13 @@ const Treatment = () => {
                     </span>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={treatment.cured === 'Yes' ? 'success' : 'danger'}>
-                      {treatment.cured === 'Yes' ? 'Cured' : 'Under Treatment'}
+                    <Badge variant={isCured(treatment) ? 'success' : 'danger'}>
+                      {isCured(treatment) ? 'Cured' : 'Under Treatment'}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
-                      {treatment.cured === 'No' && (
+                      {!isCured(treatment) && (
                         <button
                           onClick={() => markAsCured(treatment)}
                           className="p-2 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
@@ -477,7 +507,7 @@ const Treatment = () => {
               value={formData.animalId}
               onChange={handleChange}
               options={animals.map(a => ({
-                value: a.id,
+                value: getId(a),
                 label: `${a.tagId} - ${a.name}`
               }))}
               placeholder="Select animal"
@@ -529,8 +559,8 @@ const Treatment = () => {
                   value={selectedMedicine.medicineId}
                   onChange={handleMedicineChange}
                   options={medicines.map(m => ({
-                    value: m.id,
-                    label: `${m.productName} (Stock: ${m.currentQty} ${m.unit}) - ${formatCurrency(m.openingRatePerUnit)}/${m.unit}`
+                    value: getId(m),
+                    label: `${m.productName} (Stock: ${m.currentQty ?? 0} ${m.unit}) - ${formatCurrency(m.openingRatePerUnit || 0)}/${m.unit}`
                   }))}
                   placeholder="Select medicine"
                 />
@@ -679,8 +709,8 @@ const Treatment = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Status</p>
-                <Badge variant={viewModal.data.cured === 'Yes' ? 'success' : 'danger'}>
-                  {viewModal.data.cured === 'Yes' ? 'Cured' : 'Under Treatment'}
+                <Badge variant={isCured(viewModal.data) ? 'success' : 'danger'}>
+                  {isCured(viewModal.data) ? 'Cured' : 'Under Treatment'}
                 </Badge>
               </div>
             </div>

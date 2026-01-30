@@ -75,7 +75,7 @@ const EmployeeAdvance = () => {
   const openModal = (type, employee = null) => {
     setModalType(type);
     setFormData({
-      employeeId: employee?.id || '',
+      employeeId: employee?._id || employee?.id || '',
       amount: '',
       date: new Date().toISOString().split('T')[0],
       notes: ''
@@ -135,7 +135,7 @@ const EmployeeAdvance = () => {
     setSubmitting(true);
     try {
       const advanceData = {
-        employeeId: parseInt(formData.employeeId),
+        employee: String(formData.employeeId),
         amount: parseFloat(formData.amount),
         type: modalType === 'give' ? 'Given' : 'Returned',
         date: formData.date,
@@ -148,11 +148,12 @@ const EmployeeAdvance = () => {
         toast.success(`Advance ${modalType === 'give' ? 'given' : 'returned'} successfully`);
         
         // Update employee balance in local state
+        const employeeIdKey = formData.employeeId;
         setEmployees(prev => prev.map(emp => {
-          if (emp.id === advanceData.employeeId) {
-            const newBalance = modalType === 'give' 
-              ? emp.advanceBalance + advanceData.amount
-              : emp.advanceBalance - advanceData.amount;
+          if ((emp._id || emp.id) == employeeIdKey) {
+            const newBalance = modalType === 'give'
+              ? (emp.advanceBalance || 0) + advanceData.amount
+              : (emp.advanceBalance || 0) - advanceData.amount;
             return { ...emp, advanceBalance: newBalance };
           }
           return emp;
@@ -171,7 +172,8 @@ const EmployeeAdvance = () => {
   };
 
   const getEmployeeById = (id) => {
-    return employees.find(e => e.id === id);
+    if (id == null || id === '') return null;
+    return employees.find(e => (e._id || e.id) == id);
   };
 
   // Calculate totals
@@ -294,12 +296,13 @@ const EmployeeAdvance = () => {
               <p className="text-center py-8 text-gray-500">No employees found</p>
             ) : (
               employees.map((employee) => {
-                const isSelected = selectedEmployee?.id === employee.id;
-                const hasBalance = employee.advanceBalance > 0;
+                const empId = employee._id || employee.id;
+                const isSelected = selectedEmployee && (selectedEmployee._id || selectedEmployee.id) === empId;
+                const hasBalance = (employee.advanceBalance || 0) > 0;
                 
                 return (
                   <div
-                    key={employee.id}
+                    key={empId}
                     onClick={() => setSelectedEmployee(isSelected ? null : employee)}
                     className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
                       isSelected 
@@ -409,7 +412,7 @@ const EmployeeAdvance = () => {
                 />
               ) : (
                 filteredAdvances.map((advance) => {
-                  const employee = getEmployeeById(advance.employeeId);
+                  const employee = getEmployeeById(advance.employee || advance.employeeId);
                   return (
                     <TableRow key={advance.id}>
                       <TableCell>
@@ -475,9 +478,9 @@ const EmployeeAdvance = () => {
             value={formData.employeeId}
             onChange={handleChange}
             options={employees
-              .filter(e => modalType === 'give' || e.advanceBalance > 0)
+              .filter(e => modalType === 'give' || (e.advanceBalance || 0) > 0)
               .map(e => ({
-                value: e.id,
+                value: e._id || e.id,
                 label: `${e.name} (Balance: ${formatCurrency(e.advanceBalance || 0)})`
               }))
             }
@@ -521,7 +524,7 @@ const EmployeeAdvance = () => {
             <div className="bg-gray-50 rounded-xl p-4">
               <p className="text-sm text-gray-600">
                 Current Balance: <span className="font-semibold text-gray-900">
-                  {formatCurrency(getEmployeeById(parseInt(formData.employeeId))?.advanceBalance || 0)}
+                  {formatCurrency(getEmployeeById(formData.employeeId)?.advanceBalance || 0)}
                 </span>
               </p>
               {formData.amount && (
@@ -530,7 +533,7 @@ const EmployeeAdvance = () => {
                     modalType === 'give' ? 'text-orange-600' : 'text-emerald-600'
                   }`}>
                     {formatCurrency(
-                      (getEmployeeById(parseInt(formData.employeeId))?.advanceBalance || 0) +
+                      (getEmployeeById(formData.employeeId)?.advanceBalance || 0) +
                       (modalType === 'give' ? parseFloat(formData.amount) || 0 : -(parseFloat(formData.amount) || 0))
                     )}
                   </span>

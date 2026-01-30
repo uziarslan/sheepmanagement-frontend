@@ -37,7 +37,7 @@ const EmployeeForm = () => {
     allowances: '',
     bankName: '',
     accountNumber: '',
-    emergencyContact: '',
+    emergencyContact: { name: '', phone: '', relation: '' },
     notes: ''
   });
 
@@ -53,9 +53,17 @@ const EmployeeForm = () => {
       const response = await employeeAPI.getById(id);
       if (response.success) {
         const employee = response.data;
+        const ec = employee.emergencyContact && typeof employee.emergencyContact === 'object'
+          ? employee.emergencyContact
+          : {};
         setFormData({
           ...employee,
-          dateOfJoining: employee.dateOfJoining?.split('T')[0] || ''
+          dateOfJoining: employee.dateOfJoining?.split('T')[0] || '',
+          emergencyContact: {
+            name: ec.name || '',
+            phone: ec.phone || '',
+            relation: ec.relation || ''
+          }
         });
       }
     } catch (error) {
@@ -68,7 +76,15 @@ const EmployeeForm = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    if (name.startsWith('emergencyContact.')) {
+      const field = name.split('.')[1];
+      setFormData(prev => ({
+        ...prev,
+        emergencyContact: { ...prev.emergencyContact, [field]: value }
+      }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
@@ -117,7 +133,14 @@ const EmployeeForm = () => {
       const dataToSubmit = {
         ...formData,
         salary: parseFloat(formData.salary),
-        allowances: parseFloat(formData.allowances) || 0
+        allowances: parseFloat(formData.allowances) || 0,
+        emergencyContact: formData.emergencyContact && typeof formData.emergencyContact === 'object'
+          ? {
+              name: (formData.emergencyContact.name || '').trim() || null,
+              phone: (formData.emergencyContact.phone || '').trim() || null,
+              relation: (formData.emergencyContact.relation || '').trim() || null
+            }
+          : null
       };
 
       if (isEdit) {
@@ -219,11 +242,25 @@ const EmployeeForm = () => {
               />
 
               <Input
-                label="Emergency Contact"
-                name="emergencyContact"
-                value={formData.emergencyContact}
+                label="Emergency Contact Name"
+                name="emergencyContact.name"
+                value={formData.emergencyContact?.name ?? ''}
                 onChange={handleChange}
-                placeholder="Emergency contact number"
+                placeholder="Contact person name"
+              />
+              <Input
+                label="Emergency Contact Phone"
+                name="emergencyContact.phone"
+                value={formData.emergencyContact?.phone ?? ''}
+                onChange={handleChange}
+                placeholder="03XX-XXXXXXX"
+              />
+              <Input
+                label="Emergency Contact Relation"
+                name="emergencyContact.relation"
+                value={formData.emergencyContact?.relation ?? ''}
+                onChange={handleChange}
+                placeholder="e.g., Spouse, Parent"
               />
             </div>
           </Card>

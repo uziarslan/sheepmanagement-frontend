@@ -43,16 +43,20 @@ const ApplyRecipe = () => {
 
   const [errors, setErrors] = useState({});
 
+  // Helper to get id from item (supports both _id and id)
+  const getId = (item) => item?._id ?? item?.id;
+
   useEffect(() => {
     fetchData();
   }, []);
 
   useEffect(() => {
     if (formData.recipeId) {
-      const recipe = recipes.find(r => r.id === parseInt(formData.recipeId));
+      const recipe = recipes.find(r => getId(r) == formData.recipeId);
       setSelectedRecipe(recipe || null);
       if (recipe && !formData.penId) {
-        setFormData(prev => ({ ...prev, penId: recipe.penId.toString() }));
+        const recipePen = recipe.pen?._id || recipe.pen || recipe.penId;
+        setFormData(prev => ({ ...prev, penId: recipePen?.toString() || '' }));
       }
     } else {
       setSelectedRecipe(null);
@@ -63,7 +67,7 @@ const ApplyRecipe = () => {
     try {
       const [recipesRes, pensRes, applicationsRes] = await Promise.all([
         feedAPI.getAllRecipes(),
-        penAPI.getAll(),
+        penAPI.getAll({ limit: 100 }),
         feedAPI.getApplications()
       ]);
       
@@ -114,25 +118,34 @@ const ApplyRecipe = () => {
 
     setApplying(true);
     try {
-      const pen = pens.find(p => p.id === parseInt(formData.penId));
+      const recipeIdKey = String(formData.recipeId).trim();
+      const penIdKey = String(formData.penId).trim();
+      const pen = pens.find(p => getId(p) == penIdKey);
       
       const applicationData = {
-        recipeId: parseInt(formData.recipeId),
+        recipe: recipeIdKey,
         recipeName: selectedRecipe.name,
-        penId: parseInt(formData.penId),
+        pen: penIdKey,
         penName: pen?.name,
         animalCount: pen?.animalCount || 0,
         date: formData.date,
-        ingredients: selectedRecipe.ingredients,
+        ingredients: (selectedRecipe.ingredients || []).map(i => ({
+          stock: i.stockId || i.stock,
+          name: i.name,
+          unit: i.unit,
+          rate: i.ratePerUnit ?? i.rate,
+          quantity: i.quantity,
+          total: i.total
+        })),
         totalCost: selectedRecipe.totalCost,
         costPerAnimal: pen?.animalCount > 0 ? selectedRecipe.totalCost / pen.animalCount : 0,
-        notes: formData.notes
+        notes: formData.notes || null
       };
 
       const response = await feedAPI.applyRecipe(applicationData);
       
       if (response.success) {
-        toast.success(`Recipe applied to ${pen.animalCount} animals in ${pen.name}`);
+        toast.success(`Recipe applied to ${pen?.animalCount || 0} animals in ${pen?.name}`);
         setApplications(prev => [response.data, ...prev]);
         
         // Reset form
@@ -151,7 +164,7 @@ const ApplyRecipe = () => {
     }
   };
 
-  const selectedPen = pens.find(p => p.id === parseInt(formData.penId));
+  const selectedPen = pens.find(p => getId(p) == formData.penId);
 
   if (loading) {
     return <PageLoader />;
@@ -190,8 +203,8 @@ const ApplyRecipe = () => {
                 value={formData.recipeId}
                 onChange={handleChange}
                 options={recipes.map(r => ({
-                  value: r.id,
-                  label: `${r.name} - ${formatCurrency(r.totalCost)}`
+                  value: getId(r),
+                  label: `${r.name} - ${formatCurrency(r.totalCost || 0)}`
                 }))}
                 placeholder="Choose a recipe"
                 error={errors.recipeId}
@@ -203,7 +216,7 @@ const ApplyRecipe = () => {
                 value={formData.penId}
                 onChange={handleChange}
                 options={pens.map(p => ({
-                  value: p.id,
+                  value: getId(p),
                   label: `${p.name} (${p.animalCount} animals)`
                 }))}
                 placeholder="Choose a shed"
@@ -375,7 +388,7 @@ const ApplyRecipe = () => {
                 </tr>
               ) : (
                 applications.map((app) => (
-                  <tr key={app.id}>
+                  <tr key={getId(app)}>
                     <td className="px-4 py-3 text-sm">{formatDate(app.date)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">

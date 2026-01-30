@@ -40,9 +40,10 @@ const MoveToPen = () => {
 
   const fetchData = async () => {
     try {
+      // Request all pens (limit 100 = backend max) so Total Capacity / Available Spots use actual DB values
       const [animalsRes, pensRes] = await Promise.all([
         animalAPI.getAll(),
-        penAPI.getAll()
+        penAPI.getAll({ limit: 100 })
       ]);
       if (animalsRes.success) setAnimals(animalsRes.data.filter(a => a.status === 'Active'));
       if (pensRes.success) setPens(pensRes.data);
@@ -53,21 +54,48 @@ const MoveToPen = () => {
     }
   };
 
+  const getId = (item) => item?._id ?? item?.id;
+  const getAnimalPenId = (animal) => {
+    const pen = animal?.pen ?? animal?.penId;
+    // pen could be a populated object { _id, name, type } or just an ID string
+    if (pen && typeof pen === 'object') {
+      return pen._id || pen.id;
+    }
+    return pen;
+  };
+
+  // Get pen name - first check if animal has populated pen object with name
+  const getAnimalPenName = (animal) => {
+    const pen = animal?.pen;
+    // If pen is populated as object with name, use that directly
+    if (pen && typeof pen === 'object' && pen.name) {
+      return pen.name;
+    }
+    // Otherwise look up pen by ID
+    const penId = getAnimalPenId(animal);
+    if (penId == null) return 'Unassigned';
+    const foundPen = pens.find(p => (p._id || p.id) == penId);
+    return foundPen ? foundPen.name : 'Unassigned';
+  };
+
   const getPenName = (penId) => {
-    const pen = pens.find(p => p.id === penId);
+    if (penId == null) return 'Unassigned';
+    const pen = pens.find(p => (p._id || p.id) == penId);
     return pen ? pen.name : 'Unassigned';
   };
 
   const getPenById = (penId) => {
-    return pens.find(p => p.id === penId);
+    if (penId == null) return null;
+    return pens.find(p => (p._id || p.id) == penId);
   };
 
   // Filter animals
   const filteredAnimals = filterBySearch(animals, animalSearch, ['tagId', 'name', 'breedType']);
   
   // Filter pens (exclude current pen of selected animal)
+  const selectedAnimalPenId = selectedAnimal ? getAnimalPenId(selectedAnimal) : null;
   const filteredPens = pens
-    .filter(p => !selectedAnimal || p.id !== selectedAnimal.penId)
+    .filter(p => !selectedAnimal || (p._id || p.id) != selectedAnimalPenId)
     .filter(p => 
       penSearch === '' || 
       p.name.toLowerCase().includes(penSearch.toLowerCase()) ||
@@ -82,13 +110,19 @@ const MoveToPen = () => {
 
     setMoving(true);
     try {
-      await animalAPI.update(selectedAnimal.id, { penId: selectedPen.id });
+      const animalId = getId(selectedAnimal);
+      const penId = getId(selectedPen);
+      await animalAPI.update(animalId, { pen: penId });
       toast.success(`${selectedAnimal.name} moved to ${selectedPen.name}!`);
       
-      // Update local state
+      // Update local state (backend uses 'pen' field)
       setAnimals(prev => prev.map(a => 
-        a.id === selectedAnimal.id ? { ...a, penId: selectedPen.id } : a
+        getId(a) === animalId ? { ...a, pen: penId, penId } : a
       ));
+      
+      // Refetch pens so Total Capacity, Available Spots and per-pen counts reflect actual DB
+      const pensRes = await penAPI.getAll({ limit: 100 });
+      if (pensRes.success) setPens(pensRes.data);
       
       // Reset selections
       setSelectedAnimal(null);
@@ -100,8 +134,15 @@ const MoveToPen = () => {
     }
   };
 
+  // Use DB values: capacity and animalCount come from backend aggregation
+  const getPenCapacity = (pen) => Number(pen?.capacity) || 0;
+  const getPenAnimalCount = (pen) => Number(pen?.animalCount) ?? 0;
+  const getPenSpotsAvailable = (pen) => Math.max(0, getPenCapacity(pen) - getPenAnimalCount(pen));
+
   const getPenStatusColor = (pen) => {
-    const percentage = (pen.animalCount / pen.capacity) * 100;
+    const cap = getPenCapacity(pen);
+    if (cap <= 0) return 'text-gray-600 bg-gray-100';
+    const percentage = (getPenAnimalCount(pen) / cap) * 100;
     if (percentage >= 90) return 'text-red-600 bg-red-100';
     if (percentage >= 70) return 'text-orange-600 bg-orange-100';
     return 'text-emerald-600 bg-emerald-100';
@@ -148,7 +189,7 @@ const MoveToPen = () => {
                     <p className="font-semibold text-gray-900">{selectedAnimal.name}</p>
                     <p className="text-sm text-gray-500">{selectedAnimal.tagId}</p>
                     <p className="text-xs text-gray-400 mt-1">
-                      Current: {getPenName(selectedAnimal.penId)}
+                      Current: {getAnimalPenName(selectedAnimal)}
                     </p>
                   </div>
                 </div>
@@ -183,13 +224,13 @@ const MoveToPen = () => {
               {selectedPen ? (
                 <div className="flex items-center space-x-4">
                   <div className={`w-14 h-14 rounded-xl flex items-center justify-center ${getPenStatusColor(selectedPen)}`}>
-                    <span className="text-lg font-bold">{selectedPen.animalCount}/{selectedPen.capacity}</span>
+                    <span className="text-lg font-bold">{getPenAnimalCount(selectedPen)}/{getPenCapacity(selectedPen)}</span>
                   </div>
                   <div>
                     <p className="font-semibold text-gray-900">{selectedPen.name}</p>
                     <p className="text-sm text-gray-500">{selectedPen.type}</p>
                     <p className="text-xs text-gray-400 mt-1">
-                      {selectedPen.capacity - selectedPen.animalCount} spots available
+                      {getPenSpotsAvailable(selectedPen)} spots available
                     </p>
                   </div>
                 </div>
@@ -227,12 +268,12 @@ const MoveToPen = () => {
               </div>
             ) : (
               filteredAnimals.map((animal) => {
-                const isSelected = selectedAnimal?.id === animal.id;
-                const currentPen = getPenById(animal.penId);
+                const animalId = getId(animal);
+                const isSelected = getId(selectedAnimal) === animalId;
                 
                 return (
                   <div
-                    key={animal.id}
+                    key={animalId}
                     onClick={() => setSelectedAnimal(isSelected ? null : animal)}
                     className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
                       isSelected 
@@ -262,7 +303,7 @@ const MoveToPen = () => {
                               {animal.weight} kg
                             </span>
                             <span className="text-xs text-emerald-600 font-medium">
-                              {currentPen?.name || 'Unassigned'}
+                              {getAnimalPenName(animal)}
                             </span>
                           </div>
                         </div>
@@ -302,13 +343,17 @@ const MoveToPen = () => {
               </div>
             ) : (
               filteredPens.map((pen) => {
-                const isSelected = selectedPen?.id === pen.id;
-                const isFull = pen.animalCount >= pen.capacity;
-                const percentage = Math.round((pen.animalCount / pen.capacity) * 100);
+                const penId = getId(pen);
+                const isSelected = getId(selectedPen) === penId;
+                const capacity = getPenCapacity(pen);
+                const animalCount = getPenAnimalCount(pen);
+                const spotsAvailable = getPenSpotsAvailable(pen);
+                const isFull = capacity > 0 && animalCount >= capacity;
+                const percentage = capacity > 0 ? Math.round((animalCount / capacity) * 100) : 0;
                 
                 return (
                   <div
-                    key={pen.id}
+                    key={penId}
                     onClick={() => !isFull && setSelectedPen(isSelected ? null : pen)}
                     className={`p-4 rounded-xl border-2 transition-all ${
                       isFull 
@@ -324,7 +369,7 @@ const MoveToPen = () => {
                           isFull ? 'bg-red-100' : getPenStatusColor(pen)
                         }`}>
                           <span className={`text-sm font-bold ${isFull ? 'text-red-600' : ''}`}>
-                            {pen.animalCount}/{pen.capacity}
+                            {animalCount}/{capacity}
                           </span>
                         </div>
                         <div className="flex-1">
@@ -336,7 +381,7 @@ const MoveToPen = () => {
                           </div>
                           <p className="text-sm text-gray-500">{pen.type}</p>
                           
-                          {/* Capacity Bar */}
+                          {/* Capacity Bar - based on DB animalCount/capacity */}
                           <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
                             <div 
                               className={`h-2 rounded-full transition-all ${
@@ -347,7 +392,7 @@ const MoveToPen = () => {
                             />
                           </div>
                           <p className="text-xs text-gray-400 mt-1">
-                            {pen.capacity - pen.animalCount} spots available • {percentage}% full
+                            {spotsAvailable} spots available • {percentage}% full
                           </p>
                         </div>
                       </div>
@@ -383,7 +428,7 @@ const MoveToPen = () => {
           <div>
             <p className="text-sm text-purple-600">Total Capacity</p>
             <p className="text-2xl font-bold text-purple-800">
-              {pens.reduce((sum, p) => sum + p.capacity, 0)}
+              {pens.reduce((sum, p) => sum + getPenCapacity(p), 0)}
             </p>
           </div>
         </Card>
@@ -391,7 +436,7 @@ const MoveToPen = () => {
           <div>
             <p className="text-sm text-orange-600">Available Spots</p>
             <p className="text-2xl font-bold text-orange-800">
-              {pens.reduce((sum, p) => sum + (p.capacity - p.animalCount), 0)}
+              {pens.reduce((sum, p) => sum + getPenSpotsAvailable(p), 0)}
             </p>
           </div>
         </Card>

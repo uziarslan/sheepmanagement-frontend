@@ -36,6 +36,9 @@ const EmployeeList = () => {
   const [deleteModal, setDeleteModal] = useState({ open: false, employee: null });
   const [deleting, setDeleting] = useState(false);
 
+  // Helper to get id from item (supports both _id and id)
+  const getId = (item) => item?._id ?? item?.id;
+
   useEffect(() => {
     fetchEmployees();
   }, []);
@@ -55,12 +58,12 @@ const EmployeeList = () => {
 
   const handleDelete = async () => {
     if (!deleteModal.employee) return;
-    
+    const employeeId = getId(deleteModal.employee);
     setDeleting(true);
     try {
-      await employeeAPI.delete(deleteModal.employee.id);
+      await employeeAPI.delete(employeeId);
       toast.success('Employee deleted successfully');
-      setEmployees(prev => prev.filter(e => e.id !== deleteModal.employee.id));
+      setEmployees(prev => prev.filter(e => getId(e) !== employeeId));
       setDeleteModal({ open: false, employee: null });
     } catch (error) {
       toast.error(error.message || 'Failed to delete employee');
@@ -147,7 +150,7 @@ const EmployeeList = () => {
               />
             ) : (
               filteredEmployees.map((employee) => (
-                <TableRow key={employee.id}>
+                <TableRow key={getId(employee)}>
                   <TableCell>
                     <div className="flex items-center space-x-3">
                       <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
@@ -209,7 +212,7 @@ const EmployeeList = () => {
                         <HiOutlineEye className="w-5 h-5" />
                       </button>
                       <button
-                        onClick={() => navigate(`/dashboard/employees/${employee.id}/edit`)}
+                        onClick={() => navigate(`/dashboard/employees/${getId(employee)}/edit`)}
                         className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                         title="Edit"
                       >

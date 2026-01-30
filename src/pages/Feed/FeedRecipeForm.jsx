@@ -43,6 +43,9 @@ const FeedRecipeForm = () => {
     quantity: ''
   });
 
+  // Helper to get id from item (supports both _id and id)
+  const getId = (item) => item?._id ?? item?.id;
+
   useEffect(() => {
     fetchData();
   }, [id]);
@@ -50,7 +53,7 @@ const FeedRecipeForm = () => {
   const fetchData = async () => {
     try {
       const [pensRes, stocksRes] = await Promise.all([
-        penAPI.getAll(),
+        penAPI.getAll({ limit: 100 }),
         stockAPI.getAll()
       ]);
       
@@ -91,9 +94,10 @@ const FeedRecipeForm = () => {
       return;
     }
 
-    const stock = feedItems.find(f => f.id === parseInt(selectedIngredient.stockId));
+    const stock = feedItems.find(f => getId(f) == selectedIngredient.stockId);
     if (!stock) return;
 
+    const stockIdKey = getId(stock);
     const qty = parseFloat(selectedIngredient.quantity);
     if (qty <= 0) {
       toast.error('Quantity must be greater than 0');
@@ -101,19 +105,19 @@ const FeedRecipeForm = () => {
     }
 
     // Check if ingredient already added
-    if (formData.ingredients.some(i => i.stockId === stock.id)) {
+    if (formData.ingredients.some(i => (i.stockId || i.stock) == stockIdKey)) {
       toast.error('Ingredient already added');
       return;
     }
 
     const ingredient = {
-      stockId: stock.id,
+      stockId: stockIdKey,
       name: stock.productName,
       unit: stock.unit,
-      ratePerUnit: stock.openingRatePerUnit,
-      currentStock: stock.currentQty,
+      ratePerUnit: stock.openingRatePerUnit || 0,
+      currentStock: stock.currentQty ?? 0,
       quantity: qty,
-      total: qty * stock.openingRatePerUnit
+      total: qty * (stock.openingRatePerUnit || 0)
     };
 
     setFormData(prev => ({
@@ -171,14 +175,22 @@ const FeedRecipeForm = () => {
 
     setSubmitting(true);
     try {
-      const pen = pens.find(p => p.id === parseInt(formData.penId));
+      const penIdKey = String(formData.penId).trim();
+      const pen = pens.find(p => getId(p) == penIdKey);
       
       const recipeData = {
-        ...formData,
-        penId: parseInt(formData.penId),
+        name: formData.name,
+        pen: penIdKey,
         penName: pen?.name,
-        totalCost: formData.ingredients.reduce((sum, i) => sum + i.total, 0),
-        totalQuantity: formData.ingredients.reduce((sum, i) => sum + i.quantity, 0)
+        description: formData.description || null,
+        ingredients: formData.ingredients.map(i => ({
+          stock: i.stockId || i.stock,
+          name: i.name,
+          unit: i.unit,
+          ratePerUnit: i.ratePerUnit,
+          quantity: i.quantity,
+          total: i.total
+        }))
       };
 
       let response;
@@ -249,8 +261,8 @@ const FeedRecipeForm = () => {
                   value={formData.penId}
                   onChange={handleChange}
                   options={pens.map(p => ({
-                    value: p.id,
-                    label: `${p.name} (${p.animalCount} animals)`
+                    value: getId(p),
+                    label: `${p.name} (${p.animalCount ?? 0} animals)`
                   }))}
                   placeholder="Choose a shed"
                   error={errors.penId}
@@ -280,8 +292,8 @@ const FeedRecipeForm = () => {
                     value={selectedIngredient.stockId}
                     onChange={handleIngredientChange}
                     options={feedItems.map(f => ({
-                      value: f.id,
-                      label: `${f.productName} (Stock: ${f.currentQty} ${f.unit}) - ${formatCurrency(f.openingRatePerUnit)}/${f.unit}`
+                      value: getId(f),
+                      label: `${f.productName} (Stock: ${f.currentQty ?? 0} ${f.unit}) - ${formatCurrency(f.openingRatePerUnit || 0)}/${f.unit}`
                     }))}
                     placeholder="Select ingredient"
                   />
@@ -391,11 +403,11 @@ const FeedRecipeForm = () => {
                   <p className="text-sm text-blue-600">Cost per Animal</p>
                   <p className="text-2xl font-bold text-blue-700">
                     {formatCurrency(
-                      totalCost / (pens.find(p => p.id === parseInt(formData.penId))?.animalCount || 1)
+                      totalCost / (pens.find(p => getId(p) == formData.penId)?.animalCount || 1)
                     )}
                   </p>
                   <p className="text-xs text-blue-500 mt-1">
-                    Based on {pens.find(p => p.id === parseInt(formData.penId))?.animalCount || 0} animals
+                    Based on {pens.find(p => getId(p) == formData.penId)?.animalCount || 0} animals
                   </p>
                 </div>
               )}

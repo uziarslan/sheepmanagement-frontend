@@ -91,8 +91,34 @@ const AnimalList = () => {
     setSearch('');
   };
 
-  const getPenName = (penId) => {
-    const pen = pens.find(p => p.id === penId);
+  const getId = (item) => item?._id ?? item?.id;
+
+  const getAnimalPenId = (animal) => {
+    const pen = animal?.pen ?? animal?.penId;
+    // pen could be a populated object { _id, name, type } or just an ID string
+    if (pen && typeof pen === 'object') {
+      return pen._id || pen.id;
+    }
+    return pen;
+  };
+
+  // Get pen name - first check if animal has populated pen object with name
+  const getAnimalPenName = (animal) => {
+    const pen = animal?.pen;
+    // If pen is populated as object with name, use that directly
+    if (pen && typeof pen === 'object' && pen.name) {
+      return pen.name;
+    }
+    // Otherwise look up pen by ID
+    const penId = getAnimalPenId(animal);
+    if (penId == null || penId === '') return '-';
+    const foundPen = pens.find(p => (p._id || p.id) == penId);
+    return foundPen ? foundPen.name : '-';
+  };
+
+  const getPenNameById = (penId) => {
+    if (penId == null || penId === '') return '-';
+    const pen = pens.find(p => (p._id || p.id) == penId);
     return pen ? pen.name : '-';
   };
 
@@ -109,7 +135,7 @@ const AnimalList = () => {
     filteredAnimals = filteredAnimals.filter(a => a.status === filters.status);
   }
   if (filters.penId) {
-    filteredAnimals = filteredAnimals.filter(a => a.penId === parseInt(filters.penId));
+    filteredAnimals = filteredAnimals.filter(a => getAnimalPenId(a) == filters.penId);
   }
 
   if (loading) {
@@ -177,7 +203,7 @@ const AnimalList = () => {
                 name="penId"
                 value={filters.penId}
                 onChange={handleFilterChange}
-                options={pens.map(p => ({ value: p.id, label: p.name }))}
+                options={pens.map(p => ({ value: p._id || p.id, label: p.name }))}
                 placeholder="All Pens"
               />
               <div className="sm:col-span-2 lg:col-span-4 flex justify-end">
@@ -214,7 +240,7 @@ const AnimalList = () => {
               />
             ) : (
               filteredAnimals.map((animal) => (
-                <TableRow key={animal.id}>
+                <TableRow key={getId(animal)}>
                   <TableCell>
                     <div className="flex items-center space-x-3">
                       <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
@@ -241,7 +267,7 @@ const AnimalList = () => {
                   </TableCell>
                   <TableCell>{animal.weight} kg</TableCell>
                   <TableCell>
-                    <span className="text-sm">{getPenName(animal.penId)}</span>
+                    <span className="text-sm">{getAnimalPenName(animal)}</span>
                   </TableCell>
                   <TableCell>
                     <span className="font-medium">{formatCurrency(animal.purchasePrice)}</span>
@@ -269,7 +295,7 @@ const AnimalList = () => {
                         <HiOutlineEye className="w-5 h-5" />
                       </button>
                       <button
-                        onClick={() => navigate(`/dashboard/animals/${animal.id}/edit`)}
+                        onClick={() => navigate(`/dashboard/animals/${getId(animal)}/edit`)}
                         className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                         title="Edit"
                       >

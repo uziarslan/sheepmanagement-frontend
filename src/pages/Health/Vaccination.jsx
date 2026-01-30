@@ -69,11 +69,18 @@ const Vaccination = () => {
     fetchData();
   }, []);
 
+  const getId = (item) => item?._id ?? item?.id;
+  const getAnimalPenId = (animal) => {
+    const pen = animal?.pen ?? animal?.penId;
+    if (pen && typeof pen === 'object') return pen._id || pen.id;
+    return pen;
+  };
+
   const fetchData = async () => {
     try {
       const [animalsRes, pensRes, stocksRes, vaccinationsRes] = await Promise.all([
         animalAPI.getAll(),
-        penAPI.getAll(),
+        penAPI.getAll({ limit: 100 }),
         stockAPI.getAll(),
         healthAPI.getVaccinations()
       ]);
@@ -106,30 +113,32 @@ const Vaccination = () => {
       return;
     }
 
-    const medicine = medicines.find(m => m.id === parseInt(selectedMedicine.medicineId));
+    const medicine = medicines.find(m => (m._id || m.id) == selectedMedicine.medicineId);
     if (!medicine) return;
 
     const qty = parseFloat(selectedMedicine.quantity);
-    if (qty > medicine.currentQty) {
-      toast.error(`Insufficient stock. Available: ${medicine.currentQty} ${medicine.unit}`);
+    const currentQty = Number(medicine.currentQty ?? 0);
+    if (qty > currentQty) {
+      toast.error(`Insufficient stock. Available: ${currentQty} ${medicine.unit}`);
       return;
     }
 
-    const existingIndex = formData.medicines.findIndex(m => m.medicineId === medicine.id);
+    const medicineIdKey = getId(medicine);
+    const existingIndex = formData.medicines.findIndex(m => (m.medicineId || m.medicine) == medicineIdKey);
     if (existingIndex !== -1) {
       toast.error('Medicine already added');
       return;
     }
 
     const medicineEntry = {
-      medicineId: medicine.id,
+      medicineId: medicineIdKey,
       name: medicine.productName,
       packSize: medicine.openingStockQty,
-      currentQty: medicine.currentQty,
+      currentQty: currentQty,
       unit: medicine.unit,
       rate: medicine.openingRatePerUnit,
       quantity: qty,
-      total: qty * medicine.openingRatePerUnit
+      total: qty * (medicine.openingRatePerUnit || 0)
     };
 
     setFormData(prev => ({
@@ -157,12 +166,13 @@ const Vaccination = () => {
   };
 
   const selectAllAnimals = () => {
-    const eligibleAnimals = formData.scope === 'Shed' && formData.penId
-      ? animals.filter(a => a.penId === parseInt(formData.penId))
+    const penIdKey = formData.penId;
+    const eligible = formData.scope === 'Shed' && penIdKey
+      ? animals.filter(a => getAnimalPenId(a) == penIdKey)
       : animals;
     setFormData(prev => ({
       ...prev,
-      animalIds: eligibleAnimals.map(a => a.id)
+      animalIds: eligible.map(a => getId(a))
     }));
   };
 
@@ -192,25 +202,34 @@ const Vaccination = () => {
     setSubmitting(true);
     try {
       let targetAnimals = [];
-      
+      const penIdKey = formData.penId ? String(formData.penId).trim() : null;
+
       if (formData.scope === 'All Animals') {
-        targetAnimals = animals.map(a => a.id);
+        targetAnimals = animals.map(a => getId(a));
       } else if (formData.scope === 'Shed') {
-        targetAnimals = animals.filter(a => a.penId === parseInt(formData.penId)).map(a => a.id);
+        targetAnimals = animals.filter(a => getAnimalPenId(a) == penIdKey).map(a => getId(a));
       } else {
-        targetAnimals = formData.animalIds;
+        targetAnimals = [...(formData.animalIds || [])].filter(Boolean);
       }
 
+      // Backend expects: scope ('Individual Animal' not 'Individual'), pen (ObjectId string), animal (single for Individual), medicines with medicine (ObjectId)
+      const scopeForBackend = formData.scope === 'Individual' ? 'Individual Animal' : formData.scope;
       const vaccinationData = {
-        scope: formData.scope,
-        penId: formData.penId ? parseInt(formData.penId) : null,
-        animalIds: targetAnimals,
         date: formData.date,
-        vaccineName: formData.vaccineName,
-        medicines: formData.medicines,
-        totalAmount: formData.medicines.reduce((sum, m) => sum + m.total, 0),
-        comments: formData.comments,
-        animalCount: targetAnimals.length
+        scope: scopeForBackend,
+        pen: scopeForBackend === 'Shed' ? penIdKey : null,
+        animal: scopeForBackend === 'Individual Animal' && targetAnimals.length > 0 ? targetAnimals[0] : null,
+        medicines: formData.medicines.map(m => ({
+          medicine: m.medicineId || m.medicine,
+          medicineName: m.name,
+          packSize: m.packSize,
+          currentQty: m.currentQty,
+          quantity: m.quantity,
+          unit: m.unit,
+          rate: m.rate,
+          total: m.total
+        })),
+        comments: [formData.vaccineName?.trim(), formData.comments?.trim()].filter(Boolean).join('\n') || null
       };
 
       const response = await healthAPI.createVaccination(vaccinationData);
@@ -272,7 +291,8 @@ const Vaccination = () => {
   };
 
   const getPenName = (penId) => {
-    const pen = pens.find(p => p.id === penId);
+    if (penId == null || penId === '') return '-';
+    const pen = pens.find(p => (p._id || p.id) == penId);
     return pen ? pen.name : '-';
   };
 
@@ -283,9 +303,9 @@ const Vaccination = () => {
 
   const totalMedicineAmount = formData.medicines.reduce((sum, m) => sum + m.total, 0);
 
-  // Filter animals by pen if scope is Shed
+  // Filter animals by pen if scope is Shed (use _id/pen for API data)
   const eligibleAnimals = formData.scope === 'Shed' && formData.penId
-    ? animals.filter(a => a.penId === parseInt(formData.penId))
+    ? animals.filter(a => getAnimalPenId(a) == formData.penId)
     : animals;
 
   if (loading) {
@@ -328,7 +348,7 @@ const Vaccination = () => {
           <div className="text-white">
             <p className="text-purple-100 text-sm">Total Cost</p>
             <p className="text-2xl font-bold mt-1">
-              {formatCurrency(vaccinations.reduce((sum, v) => sum + (v.totalAmount || 0), 0))}
+              {formatCurrency(vaccinations.reduce((sum, v) => sum + (v.totalAmount ?? v.totalCost ?? 0), 0))}
             </p>
           </div>
         </Card>
@@ -365,7 +385,7 @@ const Vaccination = () => {
               />
             ) : (
               filteredVaccinations.map((vaccination) => (
-                <TableRow key={vaccination.id}>
+                <TableRow key={getId(vaccination)}>
                   <TableCell>
                     <span className="text-sm">{formatDate(vaccination.date)}</span>
                   </TableCell>
@@ -395,7 +415,7 @@ const Vaccination = () => {
                   </TableCell>
                   <TableCell>
                     <span className="font-semibold text-emerald-600">
-                      {formatCurrency(vaccination.totalAmount)}
+                      {formatCurrency(vaccination.totalAmount ?? vaccination.totalCost)}
                     </span>
                   </TableCell>
                   <TableCell>
@@ -484,7 +504,7 @@ const Vaccination = () => {
               name="penId"
               value={formData.penId}
               onChange={handleChange}
-              options={pens.map(p => ({ value: p.id, label: `${p.name} (${p.animalCount} animals)` }))}
+              options={pens.map(p => ({ value: getId(p), label: `${p.name} (${p.animalCount ?? 0} animals)` }))}
               placeholder="Choose a pen"
               error={errors.penId}
               required
@@ -521,19 +541,20 @@ const Vaccination = () => {
                     {formData.scope === 'Shed' ? 'Select a pen first' : 'No animals available'}
                   </p>
                 ) : (
-                  eligibleAnimals.map((animal) => (
+                  eligibleAnimals.map((animal) => {
+                    const animalId = getId(animal);
+                    const isChecked = (formData.animalIds || []).includes(animalId);
+                    return (
                     <label
-                      key={animal.id}
+                      key={animalId}
                       className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${
-                        formData.animalIds.includes(animal.id)
-                          ? 'bg-emerald-50'
-                          : 'hover:bg-gray-50'
+                        isChecked ? 'bg-emerald-50' : 'hover:bg-gray-50'
                       }`}
                     >
                       <input
                         type="checkbox"
-                        checked={formData.animalIds.includes(animal.id)}
-                        onChange={() => handleAnimalSelect(animal.id)}
+                        checked={isChecked}
+                        onChange={() => handleAnimalSelect(animalId)}
                         className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
                       />
                       <div className="flex items-center gap-2">
@@ -544,7 +565,8 @@ const Vaccination = () => {
                         <span className="text-xs text-gray-500">{animal.name}</span>
                       </div>
                     </label>
-                  ))
+                  );
+                  })
                 )}
               </div>
               {errors.animalIds && (
@@ -565,8 +587,8 @@ const Vaccination = () => {
                   value={selectedMedicine.medicineId}
                   onChange={handleMedicineChange}
                   options={medicines.map(m => ({
-                    value: m.id,
-                    label: `${m.productName} (Stock: ${m.currentQty} ${m.unit})`
+                    value: getId(m),
+                    label: `${m.productName} (Stock: ${m.currentQty ?? 0} ${m.unit})`
                   }))}
                   placeholder="Select medicine"
                 />
@@ -711,7 +733,7 @@ const Vaccination = () => {
 
             <div>
               <p className="text-sm text-gray-500">Total Cost</p>
-              <p className="text-xl font-bold text-emerald-600">{formatCurrency(viewModal.data.totalAmount)}</p>
+              <p className="text-xl font-bold text-emerald-600">{formatCurrency(viewModal.data.totalAmount ?? viewModal.data.totalCost)}</p>
             </div>
 
             {viewModal.data.comments && (

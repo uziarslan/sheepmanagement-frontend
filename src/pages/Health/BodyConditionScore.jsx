@@ -43,6 +43,11 @@ const BodyConditionScore = () => {
     bcsRange: ''
   });
 
+  // Helper to get id from item (supports both _id and id)
+  const getId = (item) => item?._id ?? item?.id;
+  // Backend returns bcsScore, support bcsValue for compatibility
+  const getBcsValue = (record) => record?.bcsScore ?? record?.bcsValue;
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -72,24 +77,22 @@ const BodyConditionScore = () => {
   };
 
   const saveBcs = async (animal) => {
-    const newBcs = editedBcs[animal.id];
+    const animalId = getId(animal);
+    const newBcs = editedBcs[animalId];
     if (!newBcs || newBcs === '') {
       toast.error('Please enter a BCS value');
       return;
     }
 
-    setSaving(prev => ({ ...prev, [animal.id]: true }));
+    setSaving(prev => ({ ...prev, [animalId]: true }));
     try {
-      const previousBcs = getLatestBcs(animal.id);
-      
+      // Backend expects bcsScore (not bcsValue); previousBcs/previousBcsDate are calculated server-side
       const bcsData = {
-        animalId: animal.id,
-        tagId: animal.tagId,
+        animal: animalId,
+        animalTagId: animal.tagId,
         animalName: animal.name,
         date: new Date().toISOString().split('T')[0],
-        bcsValue: parseFloat(newBcs),
-        previousBcs: previousBcs?.bcsValue || null,
-        previousBcsDate: previousBcs?.date || null
+        bcsScore: parseFloat(newBcs)
       };
 
       const response = await healthAPI.createBcsRecord(bcsData);
@@ -98,7 +101,7 @@ const BodyConditionScore = () => {
         setBcsRecords(prev => [response.data, ...prev]);
         setEditedBcs(prev => {
           const updated = { ...prev };
-          delete updated[animal.id];
+          delete updated[animalId];
           return updated;
         });
         toast.success(`BCS saved for ${animal.tagId}`);
@@ -106,28 +109,40 @@ const BodyConditionScore = () => {
     } catch (error) {
       toast.error('Failed to save BCS');
     } finally {
-      setSaving(prev => ({ ...prev, [animal.id]: false }));
+      setSaving(prev => ({ ...prev, [animalId]: false }));
     }
   };
 
+  // Helper to get animal ID from a BCS record (handles populated object or string)
+  const getRecordAnimalId = (record) => {
+    const animalRef = record?.animal;
+    if (animalRef && typeof animalRef === 'object') return String(animalRef._id || animalRef.id);
+    return animalRef ? String(animalRef) : record?.animalId ? String(record.animalId) : null;
+  };
+
   const getLatestBcs = (animalId) => {
-    const animalRecords = bcsRecords.filter(r => r.animalId === animalId);
+    const animalIdStr = String(animalId);
+    const animalRecords = bcsRecords.filter(r => getRecordAnimalId(r) === animalIdStr);
     if (animalRecords.length === 0) return null;
     return animalRecords.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
   };
 
   const getPreviousBcs = (animalId) => {
-    const animalRecords = bcsRecords.filter(r => r.animalId === animalId);
+    const animalIdStr = String(animalId);
+    const animalRecords = bcsRecords.filter(r => getRecordAnimalId(r) === animalIdStr);
     if (animalRecords.length < 2) return null;
     const sorted = animalRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
     return sorted[1];
   };
 
   const calculateAge = (birthDate) => {
-    if (!birthDate) return '-';
+    if (birthDate == null || birthDate === '') return '-';
     const birth = new Date(birthDate);
+    if (Number.isNaN(birth.getTime())) return '-';
     const now = new Date();
-    const months = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
+    let months = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
+    if (now.getDate() < birth.getDate()) months -= 1;
+    if (months < 0) return '-';
     if (months < 12) return `${months} months`;
     const years = Math.floor(months / 12);
     const remainingMonths = months % 12;
@@ -162,7 +177,7 @@ const BodyConditionScore = () => {
   
   if (filters.bcsRange) {
     filteredAnimals = filteredAnimals.filter(a => {
-      const latestBcs = getLatestBcs(a.id);
+      const latestBcs = getLatestBcs(getId(a));
       if (!latestBcs) return filters.bcsRange === 'none';
       
       const bcs = latestBcs.bcsValue;
@@ -178,12 +193,12 @@ const BodyConditionScore = () => {
 
   // Stats
   const avgBcs = bcsRecords.length > 0
-    ? (bcsRecords.reduce((sum, r) => sum + r.bcsValue, 0) / bcsRecords.length).toFixed(2)
+    ? (bcsRecords.reduce((sum, r) => sum + getBcsValue(r), 0) / bcsRecords.length).toFixed(2)
     : '-';
-  const animalsWithBcs = new Set(bcsRecords.map(r => r.animalId)).size;
+  const animalsWithBcs = new Set(bcsRecords.map(r => getRecordAnimalId(r))).size;
   const lowBcsCount = animals.filter(a => {
-    const bcs = getLatestBcs(a.id);
-    return bcs && bcs.bcsValue < 2.5;
+    const bcs = getLatestBcs(getId(a));
+    return bcs && getBcsValue(bcs) < 2.5;
   }).length;
 
   if (loading) {
@@ -331,11 +346,12 @@ const BodyConditionScore = () => {
               />
             ) : (
               filteredAnimals.map((animal) => {
-                const latestBcs = getLatestBcs(animal.id);
-                const previousBcs = getPreviousBcs(animal.id);
+                const animalId = getId(animal);
+                const latestBcs = getLatestBcs(animalId);
+                const previousBcs = getPreviousBcs(animalId);
                 
                 return (
-                  <TableRow key={animal.id}>
+                  <TableRow key={animalId}>
                     <TableCell>
                       <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">
                         {animal.tagId}
@@ -359,15 +375,15 @@ const BodyConditionScore = () => {
                     </TableCell>
                     <TableCell>
                       {latestBcs ? (
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium ${getBcsColor(latestBcs.bcsValue)}`}>
-                          {latestBcs.bcsValue.toFixed(1)}
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium ${getBcsColor(getBcsValue(latestBcs))}`}>
+                          {Number(getBcsValue(latestBcs)).toFixed(1)}
                         </span>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
                     </TableCell>
                     <TableCell>
-                      <span className="text-sm">{calculateAge(animal.birthDate)}</span>
+                      <span className="text-sm">{calculateAge(animal.birthDate || animal.arrivalDate)}</span>
                     </TableCell>
                     <TableCell>
                       <Input
@@ -375,8 +391,8 @@ const BodyConditionScore = () => {
                         step="0.5"
                         min="1"
                         max="5"
-                        value={editedBcs[animal.id] || ''}
-                        onChange={(e) => handleBcsChange(animal.id, e.target.value)}
+                        value={editedBcs[animalId] || ''}
+                        onChange={(e) => handleBcsChange(animalId, e.target.value)}
                         placeholder="1-5"
                         className="w-24"
                       />
@@ -387,8 +403,8 @@ const BodyConditionScore = () => {
                           size="sm"
                           icon={HiOutlineSave}
                           onClick={() => saveBcs(animal)}
-                          loading={saving[animal.id]}
-                          disabled={!editedBcs[animal.id]}
+                          loading={saving[animalId]}
+                          disabled={!editedBcs[animalId]}
                         >
                           Save
                         </Button>
@@ -427,33 +443,35 @@ const BodyConditionScore = () => {
               />
             ) : (
               bcsRecords.slice(0, 10).map((record) => {
-                const change = record.previousBcs 
-                  ? (record.bcsValue - record.previousBcs).toFixed(1)
+                const prevBcs = record.previousBcsScore ?? record.previousBcs;
+                const currentBcs = getBcsValue(record);
+                const change = prevBcs != null
+                  ? (currentBcs - prevBcs).toFixed(1)
                   : null;
                 
                 return (
-                  <TableRow key={record.id}>
+                  <TableRow key={getId(record)}>
                     <TableCell>
                       <span className="text-sm">{formatDate(record.date)}</span>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">{record.tagId}</span>
+                        <span className="font-medium">{record.animalTagId ?? record.tagId}</span>
                         <span className="text-sm text-gray-500">{record.animalName}</span>
                       </div>
                     </TableCell>
                     <TableCell>
-                      {record.previousBcs ? (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-sm ${getBcsColor(record.previousBcs)}`}>
-                          {record.previousBcs.toFixed(1)}
+                      {prevBcs != null ? (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-sm ${getBcsColor(prevBcs)}`}>
+                          {Number(prevBcs).toFixed(1)}
                         </span>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
                     </TableCell>
                     <TableCell>
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium ${getBcsColor(record.bcsValue)}`}>
-                        {record.bcsValue.toFixed(1)}
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium ${getBcsColor(currentBcs)}`}>
+                        {Number(currentBcs).toFixed(1)}
                       </span>
                     </TableCell>
                     <TableCell>

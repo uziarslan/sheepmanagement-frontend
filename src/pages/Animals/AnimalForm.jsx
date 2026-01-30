@@ -143,11 +143,26 @@ const AnimalForm = () => {
 
     setSubmitting(true);
     try {
+      // Only send fields the backend accepts (pen not penId, no picture)
+      const penValue = formData.penId ? String(formData.penId).trim() : null;
       const dataToSubmit = {
-        ...formData,
+        tagId: formData.tagId?.trim() || undefined,
+        electronicId: formData.electronicId?.trim() || null,
+        name: formData.name?.trim() || null,
+        animalType: formData.animalType,
+        breedType: formData.breedType,
+        subcategory: formData.subcategory,
+        sex: formData.sex,
+        purchasedFrom: formData.purchasedFrom || 'Pakistan',
+        arrivalDate: formData.arrivalDate,
+        birthDate: formData.birthDate || null,
         purchasePrice: parseFloat(formData.purchasePrice),
         weight: parseFloat(formData.weight),
-        penId: parseInt(formData.penId)
+        weightDate: formData.weightDate || undefined,
+        pen: penValue || null,
+        status: formData.status || 'Active',
+        pedigreeInfo: Boolean(formData.pedigreeInfo),
+        notes: formData.notes?.trim() || null
       };
 
       if (isEdit) {
@@ -361,7 +376,7 @@ const AnimalForm = () => {
                 name="penId"
                 value={formData.penId}
                 onChange={handleChange}
-                options={pens.map(p => ({ value: p.id, label: p.name }))}
+                options={pens.map(p => ({ value: p._id || p.id, label: p.name }))}
                 placeholder="Select pen"
                 error={errors.penId}
                 required

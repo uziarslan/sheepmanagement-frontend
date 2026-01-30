@@ -33,6 +33,9 @@ const Capital = () => {
   });
   const [errors, setErrors] = useState({});
 
+  // Helper to get id from item (supports both _id and id)
+  const getId = (item) => item?._id ?? item?.id;
+
   const transactionTypes = [
     { value: 'Investment', label: 'Add Investment' },
     { value: 'Animal Purchase', label: 'Animal Purchase (Deduction)' },
@@ -227,7 +230,7 @@ const Capital = () => {
           ) : (
             capital?.history?.slice().reverse().map((transaction) => (
               <div
-                key={transaction.id}
+                key={getId(transaction)}
                 className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
               >
                 <div className="flex items-center space-x-4">

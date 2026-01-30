@@ -64,6 +64,9 @@ const HoofTrimming = () => {
 
   const [errors, setErrors] = useState({});
 
+  // Helper to get id from item (supports both _id and id)
+  const getId = (item) => item?._id ?? item?.id;
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -122,27 +125,50 @@ const HoofTrimming = () => {
 
     setSubmitting(true);
     try {
-      const animal = animals.find(a => a.id === parseInt(formData.animalId));
-      const technician = employees.find(e => e.id === parseInt(formData.technicianId));
+      const animalIdKey = String(formData.animalId).trim();
+      const technicianIdKey = formData.technicianId ? String(formData.technicianId).trim() : null;
+      const animal = animals.find(a => getId(a) == animalIdKey);
+      const technician = technicianIdKey ? employees.find(e => getId(e) == technicianIdKey) : null;
+
+      // Backend expects hoofDetails as array: [{ position, condition, trimmed, notes }]
+      // position: 'Front Left' | 'Front Right' | 'Rear Left' | 'Rear Right'
+      const positionMap = {
+        frontLeft: 'Front Left',
+        frontRight: 'Front Right',
+        backLeft: 'Rear Left',
+        backRight: 'Rear Right'
+      };
+      const validConditions = ['Normal', 'Mild Issue', 'Moderate Issue', 'Severe Issue'];
+      const hoofDetailsArray = Object.entries(formData.hoofDetails || {}).map(([key, h]) => {
+        const condStr = String(h.condition || '').trim();
+        const condition = validConditions.includes(condStr) ? condStr : 'Normal';
+        const notes = condStr && !validConditions.includes(condStr) ? condStr || null : null;
+        return {
+          position: positionMap[key] || key,
+          condition,
+          trimmed: Boolean(h.treated),
+          notes: notes || null
+        };
+      });
 
       const hoofData = {
-        animalId: parseInt(formData.animalId),
-        tagId: animal?.tagId,
+        animal: animalIdKey,
+        animalTagId: animal?.tagId,
         animalName: animal?.name,
         date: formData.date,
-        technicianId: formData.technicianId ? parseInt(formData.technicianId) : null,
+        technician: technicianIdKey,
         technicianName: technician?.name || null,
         diagnosis: formData.diagnosis,
-        hoofDetails: formData.hoofDetails,
+        hoofDetails: hoofDetailsArray,
         cost: formData.cost ? parseFloat(formData.cost) : 0,
-        comments: formData.comments
+        comments: formData.comments || null
       };
 
       let response;
       if (isEdit) {
         response = await healthAPI.updateHoofRecord(editId, hoofData);
         if (response.success) {
-          setHoofRecords(prev => prev.map(h => h.id === editId ? response.data : h));
+          setHoofRecords(prev => prev.map(h => getId(h) === editId ? response.data : h));
           toast.success('Hoof trimming record updated');
         }
       } else {
@@ -163,12 +189,12 @@ const HoofTrimming = () => {
 
   const handleDelete = async () => {
     if (!deleteModal.item) return;
-    
+    const itemId = getId(deleteModal.item);
     setDeleting(true);
     try {
-      await healthAPI.deleteHoofRecord(deleteModal.item.id);
+      await healthAPI.deleteHoofRecord(itemId);
       toast.success('Record deleted');
-      setHoofRecords(prev => prev.filter(h => h.id !== deleteModal.item.id));
+      setHoofRecords(prev => prev.filter(h => getId(h) !== itemId));
       setDeleteModal({ open: false, item: null });
     } catch (error) {
       toast.error('Failed to delete record');
@@ -180,18 +206,30 @@ const HoofTrimming = () => {
   const openModal = (record = null) => {
     if (record) {
       setIsEdit(true);
-      setEditId(record.id);
+      setEditId(getId(record));
+      // Backend uses 'animal' and 'technician'; hoofDetails is array, form uses object
+      const animalRef = record.animal?._id || record.animal || record.animalId;
+      const techRef = record.technician?._id || record.technician || record.technicianId;
+      const defaultHoofObj = {
+        frontLeft: { condition: '', treated: false },
+        frontRight: { condition: '', treated: false },
+        backLeft: { condition: '', treated: false },
+        backRight: { condition: '', treated: false }
+      };
+      const posToKey = { 'Front Left': 'frontLeft', 'Front Right': 'frontRight', 'Rear Left': 'backLeft', 'Rear Right': 'backRight' };
+      const hoofDetailsObj = Array.isArray(record.hoofDetails)
+        ? record.hoofDetails.reduce((acc, h) => {
+            const key = posToKey[h.position];
+            if (key) acc[key] = { condition: h.condition || '', treated: Boolean(h.trimmed) };
+            return acc;
+          }, { ...defaultHoofObj })
+        : (record.hoofDetails || defaultHoofObj);
       setFormData({
-        animalId: record.animalId.toString(),
-        date: record.date,
-        technicianId: record.technicianId?.toString() || '',
+        animalId: animalRef?.toString() || '',
+        date: record.date?.split?.('T')?.[0] || record.date,
+        technicianId: techRef?.toString() || '',
         diagnosis: record.diagnosis,
-        hoofDetails: record.hoofDetails || {
-          frontLeft: { condition: '', treated: false },
-          frontRight: { condition: '', treated: false },
-          backLeft: { condition: '', treated: false },
-          backRight: { condition: '', treated: false }
-        },
+        hoofDetails: hoofDetailsObj,
         cost: record.cost?.toString() || '',
         comments: record.comments || ''
       });
@@ -346,11 +384,13 @@ const HoofTrimming = () => {
               />
             ) : (
               filteredRecords.map((record) => {
-                const treatedCount = Object.values(record.hoofDetails || {})
-                  .filter(h => h.treated).length;
+                const details = record.hoofDetails;
+                const treatedCount = Array.isArray(details)
+                  ? (details.filter(h => h.trimmed) || []).length
+                  : Object.values(details || {}).filter(h => h.treated).length;
                 
                 return (
-                  <TableRow key={record.id}>
+                  <TableRow key={getId(record)}>
                     <TableCell>
                       <span className="text-sm">{formatDate(record.date)}</span>
                     </TableCell>
@@ -437,7 +477,7 @@ const HoofTrimming = () => {
               value={formData.animalId}
               onChange={handleChange}
               options={animals.map(a => ({
-                value: a.id,
+                value: getId(a),
                 label: `${a.tagId} - ${a.name}`
               }))}
               placeholder="Select animal"
@@ -462,7 +502,7 @@ const HoofTrimming = () => {
               value={formData.technicianId}
               onChange={handleChange}
               options={employees.map(e => ({
-                value: e.id,
+                value: getId(e),
                 label: `${e.name} - ${e.designation}`
               }))}
               placeholder="Select technician"
@@ -571,19 +611,24 @@ const HoofTrimming = () => {
               <p className="text-sm text-gray-500 mb-3">Hoof Details</p>
               <div className="grid grid-cols-2 gap-3">
                 {Object.entries(hoofLabels).map(([key, label]) => {
-                  const hoof = viewModal.data.hoofDetails?.[key];
+                  const details = viewModal.data.hoofDetails;
+                  const positionForLabel = { 'Front Left': 'Front Left', 'Front Right': 'Front Right', 'Back Left': 'Rear Left', 'Back Right': 'Rear Right' };
+                  const hoof = Array.isArray(details)
+                    ? details.find(h => h.position === positionForLabel[label] || h.position === label)
+                    : details?.[key];
+                  const treated = hoof?.trimmed ?? hoof?.treated;
                   return (
                     <div 
                       key={key} 
                       className={`p-3 rounded-lg border ${
-                        hoof?.treated 
+                        treated 
                           ? 'border-emerald-200 bg-emerald-50' 
                           : 'border-gray-200 bg-gray-50'
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <span className="font-medium text-sm">{label}</span>
-                        {hoof?.treated && (
+                        {treated && (
                           <Badge variant="success" className="text-xs">Treated</Badge>
                         )}
                       </div>

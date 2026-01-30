@@ -66,6 +66,14 @@ const Deworming = () => {
 
   const [errors, setErrors] = useState({});
 
+  // Helper to get id from item (supports both _id and id)
+  const getId = (item) => item?._id ?? item?.id;
+  const getAnimalPenId = (animal) => {
+    const pen = animal?.pen ?? animal?.penId;
+    if (pen && typeof pen === 'object') return pen._id || pen.id;
+    return pen;
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -74,7 +82,7 @@ const Deworming = () => {
     try {
       const [animalsRes, pensRes, stocksRes, employeesRes, dewormingsRes] = await Promise.all([
         animalAPI.getAll(),
-        penAPI.getAll(),
+        penAPI.getAll({ limit: 100 }),
         stockAPI.getAll(),
         employeeAPI.getAll(),
         healthAPI.getDewormings()
@@ -99,8 +107,8 @@ const Deworming = () => {
 
     // Auto-select all animals in pen when pen changes
     if (name === 'penId' && value && formData.scope === 'Shed') {
-      const penAnimals = animals.filter(a => a.penId === parseInt(value));
-      setFormData(prev => ({ ...prev, animalIds: penAnimals.map(a => a.id) }));
+      const penAnimals = animals.filter(a => getAnimalPenId(a) == value);
+      setFormData(prev => ({ ...prev, animalIds: penAnimals.map(a => getId(a)) }));
     }
   };
 
@@ -115,23 +123,25 @@ const Deworming = () => {
       return;
     }
 
-    const medicine = medicines.find(m => m.id === parseInt(selectedMedicine.medicineId));
+    const medicine = medicines.find(m => getId(m) == selectedMedicine.medicineId);
     if (!medicine) return;
 
+    const medicineIdKey = getId(medicine);
     const qty = parseFloat(selectedMedicine.quantity);
-    if (qty > medicine.currentQty) {
-      toast.error(`Insufficient stock. Available: ${medicine.currentQty} ${medicine.unit}`);
+    const currentQty = Number(medicine.currentQty ?? 0);
+    if (qty > currentQty) {
+      toast.error(`Insufficient stock. Available: ${currentQty} ${medicine.unit}`);
       return;
     }
 
     const medicineEntry = {
-      medicineId: medicine.id,
+      medicineId: medicineIdKey,
       name: medicine.productName,
-      currentQty: medicine.currentQty,
+      currentQty: currentQty,
       unit: medicine.unit,
-      rate: medicine.openingRatePerUnit,
+      rate: medicine.openingRatePerUnit || 0,
       quantity: qty,
-      total: qty * medicine.openingRatePerUnit
+      total: qty * (medicine.openingRatePerUnit || 0)
     };
 
     setFormData(prev => ({
@@ -176,28 +186,53 @@ const Deworming = () => {
 
     setSubmitting(true);
     try {
-      const technician = employees.find(e => e.id === parseInt(formData.technicianId));
-      const pen = pens.find(p => p.id === parseInt(formData.penId));
+      const technicianIdKey = formData.technicianId ? String(formData.technicianId).trim() : null;
+      const technician = technicianIdKey ? employees.find(e => getId(e) == technicianIdKey) : null;
+      const scopeForBackend = formData.scope === 'Individual' ? 'Individual Animal' : formData.scope;
 
+      // For Shed scope, use formData.penId; for Individual, derive pen from selected animal
+      let penIdKey = null;
+      let penNameValue = null;
+      if (scopeForBackend === 'Shed' && formData.penId) {
+        penIdKey = String(formData.penId).trim();
+        const pen = pens.find(p => getId(p) == penIdKey);
+        penNameValue = pen?.name != null && String(pen.name).trim() !== '' ? String(pen.name).trim() : null;
+      } else if (scopeForBackend === 'Individual Animal' && formData.animalIds.length > 0) {
+        // Get pen from the first selected animal
+        const selectedAnimal = animals.find(a => getId(a) == formData.animalIds[0]);
+        const animalPenId = getAnimalPenId(selectedAnimal);
+        if (animalPenId) {
+          penIdKey = String(animalPenId);
+          const pen = pens.find(p => getId(p) == animalPenId);
+          penNameValue = pen?.name != null && String(pen.name).trim() !== '' ? String(pen.name).trim() : null;
+        }
+      }
+
+      // Backend calculates animalCount and totalCost automatically - don't send them
       const dewormingData = {
-        scope: formData.scope,
-        penId: formData.penId ? parseInt(formData.penId) : null,
-        penName: pen?.name || null,
-        animalIds: formData.animalIds,
         date: formData.date,
+        scope: scopeForBackend,
+        pen: penIdKey,
+        ...(penNameValue != null && { penName: penNameValue }),
+        animal: scopeForBackend === 'Individual Animal' && formData.animalIds.length > 0 ? formData.animalIds[0] : null,
         dewormingType: formData.dewormingType,
-        technicianId: formData.technicianId ? parseInt(formData.technicianId) : null,
-        technicianName: technician?.name || null,
-        medicines: formData.medicines,
-        totalAmount: formData.medicines.reduce((sum, m) => sum + m.total, 0),
-        comments: formData.comments,
-        animalCount: formData.animalIds.length
+        technician: technicianIdKey,
+        technicianName: technician?.name != null ? String(technician.name) : '',
+        medicines: formData.medicines.map(m => ({
+          medicine: m.medicineId || m.medicine,
+          medicineName: m.name,
+          unit: m.unit,
+          rate: m.rate,
+          quantity: m.quantity,
+          total: m.total
+        })),
+        comments: formData.comments || null
       };
 
       const response = await healthAPI.createDeworming(dewormingData);
       
       if (response.success) {
-        toast.success(`Deworming recorded for ${dewormingData.animalCount} animal(s)`);
+        toast.success(`Deworming recorded for ${formData.animalIds.length} animal(s)`);
         setDewormings(prev => [response.data, ...prev]);
         closeModal();
       }
@@ -210,12 +245,12 @@ const Deworming = () => {
 
   const handleDelete = async () => {
     if (!deleteModal.item) return;
-    
+    const itemId = getId(deleteModal.item);
     setDeleting(true);
     try {
-      await healthAPI.deleteDeworming(deleteModal.item.id);
+      await healthAPI.deleteDeworming(itemId);
       toast.success('Deworming record deleted');
-      setDewormings(prev => prev.filter(d => d.id !== deleteModal.item.id));
+      setDewormings(prev => prev.filter(d => getId(d) !== itemId));
       setDeleteModal({ open: false, item: null });
     } catch (error) {
       toast.error('Failed to delete record');
@@ -262,9 +297,9 @@ const Deworming = () => {
 
   const totalMedicineAmount = formData.medicines.reduce((sum, m) => sum + m.total, 0);
 
-  // Filter animals by pen if scope is Shed
+  // Filter animals by pen if scope is Shed (use _id/pen for API data)
   const eligibleAnimals = formData.scope === 'Shed' && formData.penId
-    ? animals.filter(a => a.penId === parseInt(formData.penId))
+    ? animals.filter(a => getAnimalPenId(a) == formData.penId)
     : animals;
 
   if (loading) {
@@ -307,7 +342,7 @@ const Deworming = () => {
           <div className="text-white">
             <p className="text-purple-100 text-sm">Total Cost</p>
             <p className="text-2xl font-bold mt-1">
-              {formatCurrency(dewormings.reduce((sum, d) => sum + (d.totalAmount || 0), 0))}
+              {formatCurrency(dewormings.reduce((sum, d) => sum + (d.totalCost ?? d.totalAmount ?? 0), 0))}
             </p>
           </div>
         </Card>
@@ -345,7 +380,7 @@ const Deworming = () => {
               />
             ) : (
               filteredDewormings.map((deworming) => (
-                <TableRow key={deworming.id}>
+                <TableRow key={getId(deworming)}>
                   <TableCell>
                     <span className="text-sm">{formatDate(deworming.date)}</span>
                   </TableCell>
@@ -358,7 +393,7 @@ const Deworming = () => {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <span className="text-sm">{deworming.penName || '-'}</span>
+                    <span className="text-sm">{deworming.penName || deworming.pen?.name || '-'}</span>
                   </TableCell>
                   <TableCell>
                     <span className="font-medium">{deworming.animalCount} animals</span>
@@ -368,7 +403,7 @@ const Deworming = () => {
                   </TableCell>
                   <TableCell>
                     <span className="font-semibold text-emerald-600">
-                      {formatCurrency(deworming.totalAmount || 0)}
+                      {formatCurrency(deworming.totalCost ?? deworming.totalAmount ?? 0)}
                     </span>
                   </TableCell>
                   <TableCell>
@@ -457,7 +492,7 @@ const Deworming = () => {
               name="penId"
               value={formData.penId}
               onChange={handleChange}
-              options={pens.map(p => ({ value: p.id, label: `${p.name} (${p.animalCount} animals)` }))}
+              options={pens.map(p => ({ value: getId(p), label: `${p.name} (${p.animalCount ?? 0} animals)` }))}
               placeholder="Choose a pen"
               error={errors.penId}
               required
@@ -469,7 +504,7 @@ const Deworming = () => {
             name="technicianId"
             value={formData.technicianId}
             onChange={handleChange}
-            options={employees.map(e => ({ value: e.id, label: `${e.name} - ${e.designation}` }))}
+            options={employees.map(e => ({ value: getId(e), label: `${e.name} - ${e.designation}` }))}
             placeholder="Select technician"
           />
 
@@ -486,19 +521,20 @@ const Deworming = () => {
                   {formData.scope === 'Shed' ? 'Select a pen first' : 'No animals available'}
                 </p>
               ) : (
-                eligibleAnimals.map((animal) => (
+                eligibleAnimals.map((animal) => {
+                  const animalId = getId(animal);
+                  const isChecked = (formData.animalIds || []).includes(animalId);
+                  return (
                   <label
-                    key={animal.id}
+                    key={animalId}
                     className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${
-                      formData.animalIds.includes(animal.id)
-                        ? 'bg-emerald-50'
-                        : 'hover:bg-gray-50'
+                      isChecked ? 'bg-emerald-50' : 'hover:bg-gray-50'
                     }`}
                   >
                     <input
                       type="checkbox"
-                      checked={formData.animalIds.includes(animal.id)}
-                      onChange={() => handleAnimalSelect(animal.id)}
+                      checked={isChecked}
+                      onChange={() => handleAnimalSelect(animalId)}
                       className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
                     />
                     <div className="flex items-center gap-2">
@@ -509,7 +545,8 @@ const Deworming = () => {
                       <span className="text-xs text-gray-500">{animal.name}</span>
                     </div>
                   </label>
-                ))
+                  );
+                })
               )}
             </div>
             {errors.animalIds && (
@@ -529,7 +566,7 @@ const Deworming = () => {
                   value={selectedMedicine.medicineId}
                   onChange={handleMedicineChange}
                   options={medicines.map(m => ({
-                    value: m.id,
+                    value: getId(m),
                     label: `${m.productName} (Stock: ${m.currentQty} ${m.unit})`
                   }))}
                   placeholder="Select medicine"
@@ -637,7 +674,7 @@ const Deworming = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Pen</p>
-                <p className="font-medium">{viewModal.data.penName || '-'}</p>
+                <p className="font-medium">{viewModal.data.penName || viewModal.data.pen?.name || '-'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500">Animals Dewormed</p>
@@ -677,7 +714,7 @@ const Deworming = () => {
 
             <div>
               <p className="text-sm text-gray-500">Total Cost</p>
-              <p className="text-xl font-bold text-emerald-600">{formatCurrency(viewModal.data.totalAmount || 0)}</p>
+              <p className="text-xl font-bold text-emerald-600">{formatCurrency(viewModal.data.totalCost ?? viewModal.data.totalAmount ?? 0)}</p>
             </div>
 
             {viewModal.data.comments && (

@@ -38,6 +38,9 @@ const StockList = () => {
   const [deleteModal, setDeleteModal] = useState({ open: false, stock: null });
   const [deleting, setDeleting] = useState(false);
 
+  // Helper to get id from item (supports both _id and id)
+  const getId = (item) => item?._id ?? item?.id;
+
   useEffect(() => {
     fetchStocks();
   }, []);
@@ -57,12 +60,12 @@ const StockList = () => {
 
   const handleDelete = async () => {
     if (!deleteModal.stock) return;
-    
+    const stockId = getId(deleteModal.stock);
     setDeleting(true);
     try {
-      await stockAPI.delete(deleteModal.stock.id);
+      await stockAPI.delete(stockId);
       toast.success('Stock item deleted successfully');
-      setStocks(prev => prev.filter(s => s.id !== deleteModal.stock.id));
+      setStocks(prev => prev.filter(s => getId(s) !== stockId));
       setDeleteModal({ open: false, stock: null });
     } catch (error) {
       toast.error(error.message || 'Failed to delete stock');
@@ -224,7 +227,7 @@ const StockList = () => {
                     <TableCell>
                       <div className="flex items-center justify-end space-x-2">
                         <button
-                          onClick={() => navigate(`/dashboard/stock/${stock.id}/edit`)}
+                          onClick={() => navigate(`/dashboard/stock/${getId(stock)}/edit`)}
                           className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                           title="Edit"
                         >

@@ -104,10 +104,20 @@ const StockForm = () => {
 
     setSubmitting(true);
     try {
+      // Only send fields the backend accepts (openingStockAmount is computed server-side)
       const dataToSubmit = {
-        ...formData,
+        productName: formData.productName.trim(),
+        category: formData.category,
+        unit: formData.unit,
+        isStockItem: formData.isStockItem,
         openingStockQty: parseFloat(formData.openingStockQty),
-        openingRatePerUnit: parseFloat(formData.openingRatePerUnit)
+        openingRatePerUnit: parseFloat(formData.openingRatePerUnit),
+        minStockLevel: parseFloat(formData.minStockLevel) || 0,
+        supplier: formData.supplier?.trim() || '',
+        expiryDate: formData.expiryDate || null,
+        batchNumber: formData.batchNumber?.trim() || null,
+        storageLocation: formData.storageLocation?.trim() || null,
+        notes: formData.notes?.trim() || null
       };
 
       if (isEdit) {

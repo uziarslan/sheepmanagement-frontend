@@ -91,14 +91,18 @@ const PenForm = () => {
 
     setSubmitting(true);
     try {
+      // Only send fields the backend accepts (exclude createdBy, createdAt, updatedAt, occupancyPercentage, id, animalCount)
       const dataToSubmit = {
-        ...formData,
+        name: formData.name.trim(),
+        type: formData.type,
+        capacity: parseInt(formData.capacity, 10),
         minWeightAvg: parseFloat(formData.minWeightAvg),
         maxWeightAvg: parseFloat(formData.maxWeightAvg),
-        capacity: parseInt(formData.capacity)
+        description: formData.description?.trim() || null,
+        location: formData.location?.trim() || null
       };
-
       if (isEdit) {
+        if (formData.isActive !== undefined) dataToSubmit.isActive = formData.isActive;
         await penAPI.update(id, dataToSubmit);
         toast.success('Pen updated successfully');
       } else {

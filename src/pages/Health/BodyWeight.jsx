@@ -48,6 +48,9 @@ const BodyWeight = () => {
   });
   const [errors, setErrors] = useState({});
 
+  // Helper to get id from item (supports both _id and id)
+  const getId = (item) => item?._id ?? item?.id;
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -93,29 +96,30 @@ const BodyWeight = () => {
 
     setSubmitting(true);
     try {
-      const animal = animals.find(a => a.id === parseInt(formData.animalId));
+      const animalIdKey = String(formData.animalId).trim();
+      const animal = animals.find(a => getId(a) == animalIdKey);
       
+      // Backend calculates previousWeight automatically - don't send it
       const weightData = {
-        animalId: parseInt(formData.animalId),
-        tagId: animal?.tagId,
+        animal: animalIdKey,
+        animalTagId: animal?.tagId,
         animalName: animal?.name,
         date: formData.date,
-        weight: parseFloat(formData.weight),
-        previousWeight: animal?.weight || 0
+        weight: parseFloat(formData.weight)
       };
 
       const response = await healthAPI.createWeightRecord(weightData);
       
       if (response.success) {
         // Update animal's current weight
-        await animalAPI.update(animal.id, { 
+        await animalAPI.update(animalIdKey, { 
           weight: parseFloat(formData.weight),
           weightDate: formData.date
         });
 
         // Update local state
         setAnimals(prev => prev.map(a => 
-          a.id === animal.id 
+          getId(a) == animalIdKey 
             ? { ...a, weight: parseFloat(formData.weight), weightDate: formData.date }
             : a
         ));
@@ -134,7 +138,7 @@ const BodyWeight = () => {
   const openModal = (animal = null) => {
     setSelectedAnimal(animal);
     setFormData({
-      animalId: animal?.id?.toString() || '',
+      animalId: animal ? String(getId(animal)) : '',
       date: new Date().toISOString().split('T')[0],
       weight: ''
     });
@@ -155,12 +159,12 @@ const BodyWeight = () => {
 
   const getWeightHistory = (animalId) => {
     return weightRecords
-      .filter(w => w.animalId === animalId)
+      .filter(w => (w.animal?._id || w.animal || w.animalId) == animalId)
       .sort((a, b) => new Date(b.date) - new Date(a.date));
   };
 
   const getWeightChange = (animal) => {
-    const history = getWeightHistory(animal.id);
+    const history = getWeightHistory(getId(animal));
     if (history.length < 2) return null;
     return history[0].weight - history[1].weight;
   };
@@ -268,11 +272,11 @@ const BodyWeight = () => {
           ) : (
             filteredAnimals.map((animal) => {
               const weightChange = getWeightChange(animal);
-              const history = getWeightHistory(animal.id);
+              const history = getWeightHistory(getId(animal));
               
               return (
                 <div
-                  key={animal.id}
+                  key={getId(animal)}
                   className="p-4 border border-gray-200 rounded-xl hover:border-emerald-300 hover:shadow-md transition-all"
                 >
                   <div className="flex items-start justify-between mb-3">
@@ -329,7 +333,7 @@ const BodyWeight = () => {
                       <div className="flex items-center gap-2 overflow-x-auto pb-1">
                         {history.slice(0, 5).map((record, i) => (
                           <div 
-                            key={record.id}
+                            key={getId(record) || i}
                             className="flex-shrink-0 text-center px-2 py-1 bg-gray-100 rounded-lg"
                           >
                             <p className="text-sm font-medium">{record.weight}kg</p>
@@ -377,7 +381,7 @@ const BodyWeight = () => {
               weightRecords.slice(0, 10).map((record) => {
                 const change = record.weight - (record.previousWeight || 0);
                 return (
-                  <TableRow key={record.id}>
+                  <TableRow key={getId(record)}>
                     <TableCell>
                       <span className="text-sm">{formatDate(record.date)}</span>
                     </TableCell>
@@ -438,7 +442,7 @@ const BodyWeight = () => {
             value={formData.animalId}
             onChange={handleChange}
             options={animals.map(a => ({
-              value: a.id,
+              value: getId(a),
               label: `${a.tagId} - ${a.name} (Current: ${a.weight || 0} kg)`
             }))}
             placeholder="Choose an animal"
@@ -450,7 +454,7 @@ const BodyWeight = () => {
           {formData.animalId && (
             <div className="p-4 bg-gray-50 rounded-xl">
               {(() => {
-                const animal = animals.find(a => a.id === parseInt(formData.animalId));
+                const animal = animals.find(a => getId(a) == formData.animalId);
                 return animal ? (
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center">
@@ -495,7 +499,7 @@ const BodyWeight = () => {
           {formData.weight && formData.animalId && (
             <div className="p-4 bg-emerald-50 rounded-xl">
               {(() => {
-                const animal = animals.find(a => a.id === parseInt(formData.animalId));
+                const animal = animals.find(a => getId(a) == formData.animalId);
                 const change = parseFloat(formData.weight) - (animal?.weight || 0);
                 return (
                   <div className="flex items-center justify-between">
