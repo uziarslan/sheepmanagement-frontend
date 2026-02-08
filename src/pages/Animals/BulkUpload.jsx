@@ -47,6 +47,9 @@ const BulkUpload = () => {
   const [parsedData, setParsedData] = useState([]);
   const [uploadErrors, setUploadErrors] = useState([]);
   const [dragActive, setDragActive] = useState(false);
+  const [showTotalAmountModal, setShowTotalAmountModal] = useState(false);
+  const [totalAmount, setTotalAmount] = useState('');
+  const [animalsToUpload, setAnimalsToUpload] = useState([]);
 
   const getId = (item) => item?._id ?? item?.id;
 
@@ -107,7 +110,6 @@ const BulkUpload = () => {
   // Template columns definition - Pen is removed, will be selected in preview
   const templateColumns = [
     { key: 'tagId', label: 'Tag ID', required: true, example: 'SHP-001' },
-    { key: 'electronicId', label: 'Electronic ID (RFID)', required: false, example: 'RFID-0001' },
     { key: 'name', label: 'Animal Name', required: true, example: 'Sheru' },
     { key: 'animalType', label: 'Animal Type', required: true, example: 'Sheep', options: animalTypes },
     { key: 'breedType', label: 'Breed Type', required: true, example: 'Dumba', options: breedTypes },
@@ -116,7 +118,6 @@ const BulkUpload = () => {
     { key: 'purchasedFrom', label: 'Purchased From', required: false, example: 'Pakistan', options: countries },
     { key: 'arrivalDate', label: 'Arrival Date', required: true, example: '2025-01-15' },
     { key: 'birthDate', label: 'Birth Date', required: false, example: '2024-06-15' },
-    { key: 'purchasePrice', label: 'Purchase Price', required: true, example: '45000' },
     { key: 'weight', label: 'Weight (kg)', required: true, example: '35' },
     { key: 'weightDate', label: 'Weight Date', required: false, example: '2025-01-15' },
     { key: 'notes', label: 'Notes', required: false, example: 'Healthy animal' }
@@ -249,17 +250,6 @@ const BulkUpload = () => {
     }
 
     // Validate numbers
-    if (row.purchasePrice) {
-      const price = parseFloat(row.purchasePrice);
-      if (isNaN(price)) {
-        rowErrors.push(`Purchase Price "${row.purchasePrice}" is not a valid number`);
-      } else if (price <= 0) {
-        rowErrors.push('Purchase Price must be greater than 0');
-      } else {
-        validatedData.purchasePrice = price;
-      }
-    }
-
     if (row.weight) {
       const weight = parseFloat(row.weight);
       if (isNaN(weight)) {
@@ -536,12 +526,45 @@ const BulkUpload = () => {
       return;
     }
 
+    // Show modal to collect total amount
+    setAnimalsToUpload(validAnimals);
+    setTotalAmount('');
+    setShowTotalAmountModal(true);
+  };
+
+  // Calculate prices based on total amount
+  const calculatePricePerAnimal = (validAnimals, totalAmt) => {
+    if (!validAnimals || validAnimals.length === 0) return [];
+    
+    const totalWeight = validAnimals.reduce((sum, a) => sum + (a.weight || 0), 0);
+    const totalAmountNum = parseFloat(totalAmt);
+
+    return validAnimals.map(animal => {
+      const weightPercentage = (animal.weight || 0) / totalWeight;
+      const pricePerAnimal = totalAmountNum * weightPercentage;
+      return {
+        ...animal,
+        purchasePrice: parseFloat(pricePerAnimal.toFixed(2))
+      };
+    });
+  };
+
+  // Handle submission of total amount
+  const handleTotalAmountSubmit = async () => {
+    if (!totalAmount || parseFloat(totalAmount) <= 0) {
+      toast.error('Please enter a valid total amount');
+      return;
+    }
+
+    const animalsWithPrice = calculatePricePerAnimal(animalsToUpload, totalAmount);
+    
     setUploading(true);
     setUploadErrors([]);
+    setShowTotalAmountModal(false);
     let successCount = 0;
     const failedAnimals = [];
 
-    for (const animal of validAnimals) {
+    for (const animal of animalsWithPrice) {
       try {
         const { rowIndex, isValid, errors: rowErrors, ...animalData } = animal;
         // Map penId to pen for backend
@@ -823,7 +846,6 @@ const BulkUpload = () => {
                 <TableHeader>Type</TableHeader>
                 <TableHeader>Breed</TableHeader>
                 <TableHeader>Sex</TableHeader>
-                <TableHeader>Price</TableHeader>
                 <TableHeader>Weight</TableHeader>
                 <TableHeader className="min-w-[200px]">Pen *</TableHeader>
                 <TableHeader>Issues</TableHeader>
@@ -873,9 +895,6 @@ const BulkUpload = () => {
                           {animal.sex}
                         </Badge>
                       ) : '-'}
-                    </TableCell>
-                    <TableCell>
-                      {animal.purchasePrice ? `Rs. ${animal.purchasePrice.toLocaleString()}` : '-'}
                     </TableCell>
                     <TableCell>
                       {animal.weight ? `${animal.weight} kg` : '-'}
@@ -935,6 +954,75 @@ const BulkUpload = () => {
             </ul>
           </div>
         </Card>
+      )}
+
+      {/* Total Amount Modal */}
+      {showTotalAmountModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <Card className="max-w-md w-full">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Total Amount Paid for {animalsToUpload.length} Animal{animalsToUpload.length !== 1 ? 's' : ''}
+              </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Enter the total amount you paid for all these animals. The price will be distributed based on individual weights.
+              </p>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Total Amount (Rs.)
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-semibold text-gray-600">Rs.</span>
+                  <input
+                    type="number"
+                    value={totalAmount}
+                    onChange={(e) => setTotalAmount(e.target.value)}
+                    placeholder="e.g., 100000"
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              {animalsToUpload.length > 0 && (
+                <div className="mb-6 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <p className="text-xs text-blue-800 font-medium mb-2">Price Distribution:</p>
+                  <div className="space-y-1 text-xs text-blue-700">
+                    <p>
+                      Total Weight: <span className="font-semibold">
+                        {(animalsToUpload.reduce((sum, a) => sum + (a.weight || 0), 0)).toFixed(1)} kg
+                      </span>
+                    </p>
+                    {totalAmount && (
+                      <p>
+                        Price per kg: <span className="font-semibold">
+                          Rs. {(parseFloat(totalAmount) / animalsToUpload.reduce((sum, a) => sum + (a.weight || 0), 0)).toFixed(2)}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowTotalAmountModal(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleTotalAmountSubmit}
+                  disabled={!totalAmount || parseFloat(totalAmount) <= 0 || uploading}
+                  className="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  {uploading ? 'Uploading...' : 'Upload Animals'}
+                </button>
+              </div>
+            </div>
+          </Card>
+        </div>
       )}
     </div>
   );

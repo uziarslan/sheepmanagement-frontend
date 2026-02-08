@@ -911,3 +911,89 @@ export const dashboardAPI = {
     }
   }
 };
+
+// ============ VACCINATION API ============
+export const vaccinationAPI = {
+  // Vaccines (Stock items with category=Medication)
+  getAllVaccines: async (params = {}) => {
+    try {
+      const response = await axiosInstance.get('/vaccination/vaccines', { params });
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  getVaccineById: async (id) => {
+    try {
+      const response = await axiosInstance.get(`/vaccination/vaccines/${id}`);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  createVaccine: async (data) => {
+    try {
+      const response = await axiosInstance.post('/vaccination/vaccines', data);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  updateVaccine: async (id, data) => {
+    try {
+      const response = await axiosInstance.put(`/vaccination/vaccines/${id}`, data);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  deleteVaccine: async (id) => {
+    try {
+      const response = await axiosInstance.delete(`/vaccination/vaccines/${id}`);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  // Applications
+  getApplications: async (params = {}) => {
+    try {
+      const response = await axiosInstance.get('/vaccination/applications', { params });
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  applyVaccine: async (data) => {
+    try {
+      const response = await axiosInstance.post('/vaccination/applications', data);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  getApplicationById: async (id) => {
+    try {
+      const response = await axiosInstance.get(`/vaccination/applications/${id}`);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  deleteApplication: async (id) => {
+    try {
+      const response = await axiosInstance.delete(`/vaccination/applications/${id}`);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+};

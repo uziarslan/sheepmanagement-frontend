@@ -9,6 +9,7 @@ export {
   advanceAPI,
   healthAPI,
   feedAPI,
+  vaccinationAPI,
   capitalAPI,
   authAPI,
   dashboardAPI

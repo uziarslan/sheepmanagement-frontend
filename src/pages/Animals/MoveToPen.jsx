@@ -37,6 +37,8 @@ const MoveToPen = () => {
   const [animalSearch, setAnimalSearch] = useState('');
   const [penSearch, setPenSearch] = useState('');
   const [penFilter, setPenFilter] = useState(''); // Filter animals by pen
+  const [weightFilterMin, setWeightFilterMin] = useState('');
+  const [weightFilterMax, setWeightFilterMax] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -93,6 +95,30 @@ const MoveToPen = () => {
     return pens.find(p => (p._id || p.id) == penId);
   };
 
+  // Check if animal's weight is within pen's weight range
+  const isAnimalInWeightRange = (animal, pen) => {
+    if (!pen) return true;
+    const weight = animal?.weight || 0;
+    const minWeight = pen?.minWeightAvg || 0;
+    const maxWeight = pen?.maxWeightAvg || 100;
+    return weight >= minWeight && weight <= maxWeight;
+  };
+
+  // Calculate weight difference from pen's range
+  const getWeightDifference = (animal, pen) => {
+    if (!pen) return null;
+    const weight = animal?.weight || 0;
+    const minWeight = pen?.minWeightAvg || 0;
+    const maxWeight = pen?.maxWeightAvg || 100;
+    
+    if (weight < minWeight) {
+      return { type: 'underweight', difference: minWeight - weight };
+    } else if (weight > maxWeight) {
+      return { type: 'overweight', difference: weight - maxWeight };
+    }
+    return null;
+  };
+
   // Filter animals by search and pen filter
   let filteredAnimals = filterBySearch(animals, animalSearch, ['tagId', 'name', 'breedType']);
   
@@ -102,6 +128,37 @@ const MoveToPen = () => {
   } else if (penFilter) {
     filteredAnimals = filteredAnimals.filter(a => getAnimalPenId(a) == penFilter);
   }
+
+  // Apply weight range filter (user-entered range for global filtering)
+  if (weightFilterMin || weightFilterMax) {
+    const minWeight = weightFilterMin ? parseFloat(weightFilterMin) : 0;
+    const maxWeight = weightFilterMax ? parseFloat(weightFilterMax) : Infinity;
+    filteredAnimals = filteredAnimals.filter(a => {
+      const weight = a?.weight || 0;
+      return weight >= minWeight && weight <= maxWeight;
+    });
+  }
+
+  // Separate animals into out-of-range for their CURRENT pen and others
+  const sortedFilteredAnimals = (() => {
+    const outOfRange = [];
+    const inRange = [];
+    
+    filteredAnimals.forEach(animal => {
+      // Get the animal's current pen
+      const currentPenId = getAnimalPenId(animal);
+      const currentPen = currentPenId ? getPenById(currentPenId) : null;
+      
+      // If animal has a current pen, check if it's within range
+      if (currentPen && !isAnimalInWeightRange(animal, currentPen)) {
+        outOfRange.push(animal);
+      } else {
+        inRange.push(animal);
+      }
+    });
+    
+    return [...outOfRange, ...inRange];
+  })();
   
   // Filter pens (exclude current pen if all selected animals are from same pen)
   const selectedAnimalPenIds = [...new Set(selectedAnimals.map(a => getAnimalPenId(a)))];
@@ -134,16 +191,16 @@ const MoveToPen = () => {
 
   // Select all visible animals
   const selectAllAnimals = () => {
-    const allIds = new Set(filteredAnimals.map(a => getId(a)));
+    const allIds = new Set(sortedFilteredAnimals.map(a => getId(a)));
     const currentIds = new Set(selectedAnimals.map(a => getId(a)));
-    const allSelected = filteredAnimals.every(a => currentIds.has(getId(a)));
+    const allSelected = sortedFilteredAnimals.every(a => currentIds.has(getId(a)));
     
     if (allSelected) {
       // Deselect all filtered
       setSelectedAnimals(prev => prev.filter(a => !allIds.has(getId(a))));
     } else {
       // Select all filtered (merge with existing)
-      const newAnimals = filteredAnimals.filter(a => !currentIds.has(getId(a)));
+      const newAnimals = sortedFilteredAnimals.filter(a => !currentIds.has(getId(a)));
       setSelectedAnimals(prev => [...prev, ...newAnimals]);
     }
   };
@@ -215,8 +272,8 @@ const MoveToPen = () => {
   };
 
   // Check if all filtered animals are selected
-  const allFilteredSelected = filteredAnimals.length > 0 && 
-    filteredAnimals.every(a => selectedAnimals.some(sa => getId(sa) === getId(a)));
+  const allFilteredSelected = sortedFilteredAnimals.length > 0 && 
+    sortedFilteredAnimals.every(a => selectedAnimals.some(sa => getId(sa) === getId(a)));
 
   // Build pen filter options
   const penFilterOptions = [
@@ -368,8 +425,50 @@ const MoveToPen = () => {
               {selectedAnimals.length > 0 && (
                 <Badge variant="success">{selectedAnimals.length} selected</Badge>
               )}
-              <Badge variant="info">{filteredAnimals.length} animals</Badge>
+              <Badge variant="info">{sortedFilteredAnimals.length} animals</Badge>
             </div>
+          </div>
+          
+          {/* Weight Range Filter */}
+          <div className="space-y-3 mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center gap-2 mb-2">
+              <HiOutlineFilter className="w-4 h-4 text-blue-600" />
+              <p className="text-sm font-medium text-blue-900">Weight Range Filter</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Min Weight (kg)</label>
+                <input
+                  type="number"
+                  value={weightFilterMin}
+                  onChange={(e) => setWeightFilterMin(e.target.value)}
+                  placeholder="e.g., 20"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Max Weight (kg)</label>
+                <input
+                  type="number"
+                  value={weightFilterMax}
+                  onChange={(e) => setWeightFilterMax(e.target.value)}
+                  placeholder="e.g., 40"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+            {(weightFilterMin || weightFilterMax) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setWeightFilterMin('');
+                  setWeightFilterMax('');
+                }}
+              >
+                Clear Weight Filter
+              </Button>
+            )}
           </div>
           
           {/* Search and Filter */}
@@ -407,7 +506,7 @@ const MoveToPen = () => {
               onClick={selectAllAnimals}
               className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
             >
-              {allFilteredSelected ? 'Deselect All' : 'Select All'} ({filteredAnimals.length})
+              {allFilteredSelected ? 'Deselect All' : 'Select All'} ({sortedFilteredAnimals.length})
             </button>
             {selectedAnimals.length > 0 && (
               <button
@@ -420,27 +519,35 @@ const MoveToPen = () => {
           </div>
 
           <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
-            {filteredAnimals.length === 0 ? (
+            {sortedFilteredAnimals.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 No animals found
               </div>
             ) : (
-              filteredAnimals.map((animal) => {
+              sortedFilteredAnimals.map((animal) => {
                 const animalId = getId(animal);
                 const isSelected = selectedAnimals.some(a => getId(a) === animalId);
+                
+                // Get current pen and check if out of range
+                const currentPenId = getAnimalPenId(animal);
+                const currentPen = currentPenId ? getPenById(currentPenId) : null;
+                const isOutOfRange = currentPen && !isAnimalInWeightRange(animal, currentPen);
+                const weightDiff = currentPen && getWeightDifference(animal, currentPen);
                 
                 return (
                   <div
                     key={animalId}
                     onClick={() => toggleAnimalSelection(animal)}
                     className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                      isSelected 
-                        ? 'border-emerald-500 bg-emerald-50 shadow-md' 
-                        : 'border-gray-200 hover:border-emerald-300 hover:bg-gray-50'
+                      isOutOfRange
+                        ? 'border-red-400 bg-red-50 shadow-md'
+                        : isSelected 
+                          ? 'border-emerald-500 bg-emerald-50 shadow-md' 
+                          : 'border-gray-200 hover:border-emerald-300 hover:bg-gray-50'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
+                      <div className="flex items-center space-x-4 flex-1">
                         {/* Checkbox */}
                         <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
                           isSelected 
@@ -450,13 +557,24 @@ const MoveToPen = () => {
                           {isSelected && <HiOutlineCheck className="w-4 h-4 text-white" />}
                         </div>
                         <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                          isSelected ? 'bg-emerald-200' : 'bg-emerald-100'
+                          isOutOfRange
+                            ? 'bg-red-200'
+                            : isSelected ? 'bg-emerald-200' : 'bg-emerald-100'
                         }`}>
-                          <GiSheep className={`w-5 h-5 ${isSelected ? 'text-emerald-700' : 'text-emerald-600'}`} />
+                          <GiSheep className={`w-5 h-5 ${
+                            isOutOfRange
+                              ? 'text-red-700'
+                              : isSelected ? 'text-emerald-700' : 'text-emerald-600'
+                          }`} />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
                             <p className="font-semibold text-gray-900">{animal.name}</p>
+                            {isOutOfRange && (
+                              <Badge variant="danger" className="text-xs">
+                                {weightDiff?.type === 'underweight' ? '⬇ Underweight' : '⬆ Overweight'}
+                              </Badge>
+                            )}
                             <Badge variant={animal.sex === 'Male' ? 'info' : 'purple'} className="text-xs">
                               {animal.sex}
                             </Badge>
@@ -465,12 +583,24 @@ const MoveToPen = () => {
                             {animal.tagId} • {animal.breedType}
                           </p>
                           <div className="flex items-center gap-3 mt-1">
-                            <span className="text-xs text-gray-400">
+                            <span className={`text-xs font-medium ${
+                              isOutOfRange ? 'text-red-600' : 'text-gray-400'
+                            }`}>
                               {animal.weight} kg
+                              {isOutOfRange && weightDiff && (
+                                <span className="ml-1 text-red-600 font-bold">
+                                  ({weightDiff.type === 'underweight' ? '-' : '+'}{weightDiff.difference.toFixed(1)} kg)
+                                </span>
+                              )}
                             </span>
                             <span className="text-xs text-emerald-600 font-medium">
                               {getAnimalPenName(animal)}
                             </span>
+                            {currentPen && (
+                              <span className="text-xs text-gray-500">
+                                ({currentPen.minWeightAvg}-{currentPen.maxWeightAvg}kg)
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -566,6 +696,11 @@ const MoveToPen = () => {
                             )}
                           </div>
                           <p className="text-sm text-gray-500">{pen.type}</p>
+                          
+                          {/* Weight Range */}
+                          <p className="text-xs text-blue-600 font-medium mt-2">
+                            📏 Weight Range: {pen.minWeightAvg}-{pen.maxWeightAvg} kg
+                          </p>
                           
                           {/* Capacity Bar - based on DB animalCount/capacity */}
                           <div className="mt-2 w-full bg-gray-200 rounded-full h-2">

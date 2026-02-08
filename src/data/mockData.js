@@ -384,7 +384,7 @@ export const animalStatuses = ["Active", "Quarantine", "Sold", "Dead", "Returned
 
 export const penTypes = ["Fattening", "Production", "Quarantine", "Heifer", "Dry", "Close-up"];
 
-export const stockCategories = ["Feeding", "Medication", "Semen", "Seeds", "Fertilizers", "Pesticides"];
+export const stockCategories = ["Feeding", "Medication", "Farm Accessories", "Semen", "Seeds", "Fertilizers", "Pesticides"];
 export const stockUnits = ["kg", "gm", "ltr", "ml", "nos"];
 
 export const departments = ["Operations", "Health", "Finance", "Administration"];

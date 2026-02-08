@@ -10,8 +10,11 @@ const Select = ({
   error,
   required = false,
   disabled = false,
-  className = ''
+  className = '',
+  children
 }) => {
+  const safeOptions = Array.isArray(options) ? options : [];
+
   return (
     <div className={className}>
       {label && (
@@ -41,7 +44,8 @@ const Select = ({
         `}
       >
         <option value="">{placeholder}</option>
-        {options.map((option) => (
+        {children}
+        {safeOptions.map((option) => (
           <option
             key={typeof option === 'object' ? option.value : option}
             value={typeof option === 'object' ? option.value : option}

@@ -12,12 +12,19 @@ import {
   MoveToPen,
   PenList,
   PenForm,
-  StockList,
-  StockForm,
+  StockOverview,
+  StockMedicationList,
+  StockFeedingList,
+  StockAccessoryList,
+  StockMedicationForm,
+  StockFeedingForm,
+  StockAccessoryForm,
+  StockMedicationBulkUpload,
+  StockFeedingBulkUpload,
+  StockEdit,
   EmployeeList,
   EmployeeForm,
   EmployeeAdvance,
-  Vaccination,
   Treatment,
   CureTracking,
   Deworming,
@@ -26,7 +33,11 @@ import {
   HoofTrimming,
   FeedRecipeList,
   FeedRecipeForm,
-  ApplyRecipe
+  ApplyRecipe,
+  VaccineList,
+  CreateVaccine,
+  ApplyVaccine,
+  ApplicationHistory
 } from './pages';
 
 // Protected Route Component
@@ -125,9 +136,16 @@ function App() {
           <Route path="pens/:id/edit" element={<PenForm />} />
           
           {/* Stock */}
-          <Route path="stock" element={<StockList />} />
-          <Route path="stock/add" element={<StockForm />} />
-          <Route path="stock/:id/edit" element={<StockForm />} />
+          <Route path="stock" element={<StockOverview />} />
+          <Route path="stock/medication" element={<StockMedicationList />} />
+          <Route path="stock/medication/add" element={<StockMedicationForm />} />
+          <Route path="stock/medication/bulk-upload" element={<StockMedicationBulkUpload />} />
+          <Route path="stock/feeding" element={<StockFeedingList />} />
+          <Route path="stock/feeding/add" element={<StockFeedingForm />} />
+          <Route path="stock/feeding/bulk-upload" element={<StockFeedingBulkUpload />} />
+          <Route path="stock/farm-accessories" element={<StockAccessoryList />} />
+          <Route path="stock/farm-accessories/add" element={<StockAccessoryForm />} />
+          <Route path="stock/:id/edit" element={<StockEdit />} />
           
           {/* Employees */}
           <Route path="employees" element={<EmployeeList />} />
@@ -137,7 +155,6 @@ function App() {
           <Route path="employees/:id/edit" element={<EmployeeForm />} />
           
           {/* Health & Veterinary */}
-          <Route path="health/vaccination" element={<Vaccination />} />
           <Route path="health/treatment" element={<Treatment />} />
           <Route path="health/cure-tracking" element={<CureTracking />} />
           <Route path="health/deworming" element={<Deworming />} />
@@ -150,6 +167,13 @@ function App() {
           <Route path="feed/recipes/add" element={<FeedRecipeForm />} />
           <Route path="feed/recipes/:id/edit" element={<FeedRecipeForm />} />
           <Route path="feed/apply" element={<ApplyRecipe />} />
+          
+          {/* Vaccination Management */}
+          <Route path="vaccination/vaccines" element={<VaccineList />} />
+          <Route path="vaccination/vaccines/add" element={<CreateVaccine />} />
+          <Route path="vaccination/vaccines/:id/edit" element={<CreateVaccine />} />
+          <Route path="vaccination/apply" element={<ApplyVaccine />} />
+          <Route path="vaccination/history" element={<ApplicationHistory />} />
         </Route>
 
         {/* Redirect root to login */}

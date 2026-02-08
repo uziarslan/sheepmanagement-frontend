@@ -10,7 +10,8 @@ import {
   HiOutlineX,
   HiOutlineChevronDown,
   HiOutlineHeart,
-  HiOutlineBeaker
+  HiOutlineBeaker,
+  HiOutlineShieldCheck
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
 
@@ -54,8 +55,33 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
       icon: HiOutlineCube,
       path: '/dashboard/stock',
       submenu: [
-        { name: 'All Stock', path: '/dashboard/stock' },
-        { name: 'Add Stock', path: '/dashboard/stock/add' }
+        { name: 'Overview', path: '/dashboard/stock' },
+        { 
+          name: 'Medication', 
+          path: '/dashboard/stock/medication',
+          submenu: [
+            { name: 'All Medications', path: '/dashboard/stock/medication' },
+            { name: 'Add Medication', path: '/dashboard/stock/medication/add' },
+            { name: 'Bulk Upload', path: '/dashboard/stock/medication/bulk-upload' }
+          ]
+        },
+        { 
+          name: 'Feeding', 
+          path: '/dashboard/stock/feeding',
+          submenu: [
+            { name: 'All Feeding', path: '/dashboard/stock/feeding' },
+            { name: 'Add Feeding', path: '/dashboard/stock/feeding/add' },
+            { name: 'Bulk Upload', path: '/dashboard/stock/feeding/bulk-upload' }
+          ]
+        },
+        { 
+          name: 'Accessories', 
+          path: '/dashboard/stock/farm-accessories',
+          submenu: [
+            { name: 'All Accessories', path: '/dashboard/stock/farm-accessories' },
+            { name: 'Add Accessory', path: '/dashboard/stock/farm-accessories/add' }
+          ]
+        }
       ]
     },
     {
@@ -73,7 +99,6 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
       icon: HiOutlineHeart,
       path: '/dashboard/health',
       submenu: [
-        { name: 'Vaccination', path: '/dashboard/health/vaccination' },
         { name: 'Treatment', path: '/dashboard/health/treatment' },
         { name: 'Cure Tracking', path: '/dashboard/health/cure-tracking' },
         { name: 'Deworming', path: '/dashboard/health/deworming' },
@@ -91,6 +116,17 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
         { name: 'Create Recipe', path: '/dashboard/feed/recipes/add' },
         { name: 'Apply Recipe', path: '/dashboard/feed/apply' }
       ]
+    },
+    {
+      name: 'Vaccination',
+      icon: HiOutlineShieldCheck,
+      path: '/dashboard/vaccination',
+      submenu: [
+        { name: 'All Vaccines', path: '/dashboard/vaccination/vaccines' },
+        { name: 'Create Vaccine', path: '/dashboard/vaccination/vaccines/add' },
+        { name: 'Apply Vaccine', path: '/dashboard/vaccination/apply' },
+        { name: 'Application History', path: '/dashboard/vaccination/history' }
+      ]
     }
   ];
 
@@ -107,7 +143,12 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
 
   const isSubmenuActive = (item) => {
     if (item.submenu) {
-      return item.submenu.some(sub => location.pathname === sub.path);
+      return item.submenu.some(sub => {
+        if (sub.submenu) {
+          return sub.submenu.some(nestedSub => location.pathname === nestedSub.path);
+        }
+        return location.pathname === sub.path;
+      });
     }
     return false;
   };
@@ -177,17 +218,56 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
                       <ul className="mt-1 ml-4 space-y-1">
                         {item.submenu.map((sub) => (
                           <li key={sub.path}>
-                            <Link
-                              to={sub.path}
-                              onClick={() => setIsOpen(false)}
-                              className={`block px-4 py-2 rounded-lg transition-colors ${
-                                isActive(sub.path)
-                                  ? 'bg-emerald-600 text-white'
-                                  : 'text-emerald-200 hover:bg-emerald-700/50'
-                              }`}
-                            >
-                              {sub.name}
-                            </Link>
+                            {sub.submenu ? (
+                              <div>
+                                <button
+                                  onClick={() => toggleSubmenu(sub.name)}
+                                  className={`w-full flex items-center justify-between px-4 py-2 rounded-lg transition-colors ${
+                                    sub.submenu.some(nestedSub => location.pathname === nestedSub.path)
+                                      ? 'bg-emerald-600 text-white'
+                                      : 'text-emerald-200 hover:bg-emerald-700/50'
+                                  }`}
+                                >
+                                  <span>{sub.name}</span>
+                                  <HiOutlineChevronDown
+                                    className={`w-3 h-3 transition-transform ${
+                                      expandedMenus[sub.name] ? 'rotate-180' : ''
+                                    }`}
+                                  />
+                                </button>
+                                {expandedMenus[sub.name] && (
+                                  <ul className="mt-1 ml-4 space-y-1">
+                                    {sub.submenu.map((nestedSub) => (
+                                      <li key={nestedSub.path}>
+                                        <Link
+                                          to={nestedSub.path}
+                                          onClick={() => setIsOpen(false)}
+                                          className={`block px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                                            isActive(nestedSub.path)
+                                              ? 'bg-emerald-500 text-white'
+                                              : 'text-emerald-200 hover:bg-emerald-700/50'
+                                          }`}
+                                        >
+                                          {nestedSub.name}
+                                        </Link>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                            ) : (
+                              <Link
+                                to={sub.path}
+                                onClick={() => setIsOpen(false)}
+                                className={`block px-4 py-2 rounded-lg transition-colors ${
+                                  isActive(sub.path)
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'text-emerald-200 hover:bg-emerald-700/50'
+                                }`}
+                              >
+                                {sub.name}
+                              </Link>
+                            )}
                           </li>
                         ))}
                       </ul>
