@@ -130,6 +130,15 @@ export const animalAPI = {
     } catch (error) {
       return handleError(error);
     }
+  },
+
+  declareDead: async (animalId, deathData) => {
+    try {
+      const response = await axiosInstance.put(`/animals/${animalId}/declare-dead`, deathData);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
   }
 };
 

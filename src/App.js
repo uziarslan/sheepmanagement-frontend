@@ -11,6 +11,7 @@ import {
   AnimalForm,
   BulkUpload,
   MoveToPen,
+  DeclareAnimalDead,
   PenList,
   PenForm,
   StockOverview,
@@ -160,6 +161,7 @@ function App() {
           <Route path="animals/add" element={<AnimalForm />} />
           <Route path="animals/bulk-upload" element={<BulkUpload />} />
           <Route path="animals/move-to-pen" element={<MoveToPen />} />
+          <Route path="animals/declare-dead" element={<DeclareAnimalDead />} />
           <Route path="animals/:id" element={<AnimalForm />} />
           <Route path="animals/:id/edit" element={<AnimalForm />} />
           

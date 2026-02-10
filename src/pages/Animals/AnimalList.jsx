@@ -6,7 +6,8 @@ import {
   HiOutlineEye,
   HiOutlinePencil,
   HiOutlineTrash,
-  HiOutlineFilter
+  HiOutlineFilter,
+  HiOutlineExclamationCircle
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
 import { animalAPI, penAPI } from '../../services/mockApi';
@@ -149,9 +150,16 @@ const AnimalList = () => {
         subtitle={`${animals.length} total animals registered`}
         breadcrumbs={[{ label: 'Animals' }]}
         action={
-          <Link to="/dashboard/animals/add">
-            <Button icon={HiOutlinePlus}>Add Animal</Button>
-          </Link>
+          <div className="flex space-x-3">
+            <Link to="/dashboard/animals/declare-dead">
+              <Button variant="outline" icon={HiOutlineExclamationCircle} className="border-red-200 text-red-600 hover:bg-red-50">
+                Declare Dead
+              </Button>
+            </Link>
+            <Link to="/dashboard/animals/add">
+              <Button icon={HiOutlinePlus}>Add Animal</Button>
+            </Link>
+          </div>
         }
       />
 
@@ -226,6 +234,9 @@ const AnimalList = () => {
             <TableHeader>Pen</TableHeader>
             <TableHeader>Price</TableHeader>
             <TableHeader>Price/Kg</TableHeader>
+            <TableHeader>Cost</TableHeader>
+            <TableHeader>Total Price</TableHeader>
+            <TableHeader>Total Price/Kg</TableHeader>
             <TableHeader>Status</TableHeader>
             <TableHeader className="text-right">Actions</TableHeader>
           </TableHead>
@@ -236,7 +247,7 @@ const AnimalList = () => {
                   ? "No animals match your search criteria" 
                   : "No animals registered yet"
                 }
-                colSpan={10}
+                colSpan={13}
               />
             ) : (
               filteredAnimals.map((animal) => (
@@ -276,6 +287,24 @@ const AnimalList = () => {
                     <span className="font-medium text-emerald-600">
                       {animal.weight > 0 
                         ? formatCurrency(animal.purchasePrice / animal.weight) 
+                        : '-'
+                      }
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-medium text-orange-600">
+                      {formatCurrency(animal.cost || 0)}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-medium text-blue-600">
+                      {formatCurrency((animal.purchasePrice || 0) + (animal.cost || 0))}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-medium text-blue-600">
+                      {animal.weight > 0 
+                        ? formatCurrency(((animal.purchasePrice || 0) + (animal.cost || 0)) / animal.weight) 
                         : '-'
                       }
                     </span>
