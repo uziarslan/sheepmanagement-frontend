@@ -9,7 +9,9 @@ export {
   feedAPI,
   capitalAPI,
   authAPI,
-  dashboardAPI
+  dashboardAPI,
+  auditAPI,
+  userAPI
 } from './api';
 
 // Export axios instance for custom use

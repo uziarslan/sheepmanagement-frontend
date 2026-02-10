@@ -14,21 +14,25 @@ import {
   HiOutlineShieldCheck
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
+import { useAuth } from '../../Context/AuthContext';
 
 const Sidebar = ({ isOpen, setIsOpen }) => {
   const location = useLocation();
   const [expandedMenus, setExpandedMenus] = useState({});
+  const { user, logout } = useAuth();
 
   const menuItems = [
     {
       name: 'Dashboard',
       icon: HiOutlineHome,
-      path: '/dashboard'
+      path: '/dashboard',
+      roles: ['Admin']
     },
     {
       name: 'Capital',
       icon: HiOutlineCurrencyDollar,
-      path: '/dashboard/capital'
+      path: '/dashboard/capital',
+      roles: ['Admin']
     },
     {
       name: 'Animals',
@@ -88,11 +92,13 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
       name: 'Employees',
       icon: HiOutlineUsers,
       path: '/dashboard/employees',
+      roles: ['Admin'],
       submenu: [
         { name: 'All Employees', path: '/dashboard/employees' },
         { name: 'Add Employee', path: '/dashboard/employees/add' },
         { name: 'Advances / Loans', path: '/dashboard/employees/advances' },
-        { name: 'Salaries', path: '/dashboard/employees/salaries' }
+        { name: 'Salaries', path: '/dashboard/employees/salaries' },
+        { name: 'User Management', path: '/dashboard/employees/users' }
       ]
     },
     {
@@ -128,6 +134,12 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
         { name: 'Apply Vaccine', path: '/dashboard/vaccination/apply' },
         { name: 'Application History', path: '/dashboard/vaccination/history' }
       ]
+    },
+    {
+      name: 'Audit Logs',
+      icon: HiOutlineShieldCheck,
+      path: '/dashboard/admin/audit-logs',
+      roles: ['Admin']
     }
   ];
 
@@ -155,9 +167,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('sheep_farm_user');
-    window.location.href = '/login';
+    logout();
   };
 
   return (
@@ -193,7 +203,9 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 min-h-0">
           <ul className="space-y-1 px-3">
-            {menuItems.map((item) => (
+            {menuItems
+              .filter((item) => !item.roles || (user && item.roles.includes(user.role)))
+              .map((item) => (
               <li key={item.name}>
                 {item.submenu ? (
                   <div>

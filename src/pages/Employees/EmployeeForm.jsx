@@ -38,7 +38,9 @@ const EmployeeForm = () => {
     bankName: '',
     accountNumber: '',
     emergencyContact: { name: '', phone: '', relation: '' },
-    notes: ''
+    notes: '',
+    createCredentials: false,
+    loginPassword: ''
   });
 
   useEffect(() => {
@@ -63,7 +65,9 @@ const EmployeeForm = () => {
             name: ec.name || '',
             phone: ec.phone || '',
             relation: ec.relation || ''
-          }
+          },
+          createCredentials: false,
+          loginPassword: ''
         });
       }
     } catch (error) {
@@ -75,15 +79,16 @@ const EmployeeForm = () => {
   };
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
+    const fieldValue = type === 'checkbox' ? checked : value;
     if (name.startsWith('emergencyContact.')) {
       const field = name.split('.')[1];
       setFormData(prev => ({
         ...prev,
-        emergencyContact: { ...prev.emergencyContact, [field]: value }
+        emergencyContact: { ...prev.emergencyContact, [field]: fieldValue }
       }));
     } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
+      setFormData(prev => ({ ...prev, [name]: fieldValue }));
     }
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
@@ -120,6 +125,15 @@ const EmployeeForm = () => {
       newErrors.dateOfJoining = 'Date of joining is required';
     }
 
+    if (!isEdit && formData.createCredentials) {
+      if (!formData.email || !formData.email.trim()) {
+        newErrors.email = 'Email is required to create login credentials';
+      }
+      if (!formData.loginPassword || formData.loginPassword.length < 6) {
+        newErrors.loginPassword = 'Temporary password must be at least 6 characters';
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -142,6 +156,14 @@ const EmployeeForm = () => {
             }
           : null
       };
+
+      if (!isEdit && formData.createCredentials) {
+        dataToSubmit.createCredentials = true;
+        dataToSubmit.loginPassword = formData.loginPassword;
+      } else {
+        delete dataToSubmit.createCredentials;
+        delete dataToSubmit.loginPassword;
+      }
 
       if (isEdit) {
         await employeeAPI.update(id, dataToSubmit);
@@ -231,6 +253,36 @@ const EmployeeForm = () => {
                 placeholder="email@example.com"
                 error={errors.email}
               />
+
+              {!isEdit && (
+                <div className="space-y-3 p-3 border border-emerald-100 rounded-lg bg-emerald-50/40">
+                  <label className="flex items-center space-x-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      name="createCredentials"
+                      checked={formData.createCredentials}
+                      onChange={handleChange}
+                      className="h-4 w-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
+                    />
+                    <span>Create login credentials for this employee</span>
+                  </label>
+                  <p className="text-xs text-gray-500">
+                    If enabled, the employee will be able to log in using the email above and the temporary password you set.
+                  </p>
+                  {formData.createCredentials && (
+                    <Input
+                      label="Temporary Password"
+                      type="password"
+                      name="loginPassword"
+                      value={formData.loginPassword}
+                      onChange={handleChange}
+                      placeholder="Enter a temporary password"
+                      error={errors.loginPassword}
+                      required
+                    />
+                  )}
+                </div>
+              )}
 
               <Textarea
                 label="Address"

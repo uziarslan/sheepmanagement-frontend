@@ -22,6 +22,7 @@ export { default as EmployeeList } from './Employees/EmployeeList';
 export { default as EmployeeForm } from './Employees/EmployeeForm';
 export { default as EmployeeAdvance } from './Employees/EmployeeAdvance';
 export { default as EmployeeSalary } from './Employees/EmployeeSalary';
+export { default as UserManagement } from './Employees/UserManagement';
 // Health & Veterinary
 export { default as Treatment } from './Health/Treatment';
 export { default as CureTracking } from './Health/CureTracking';
@@ -38,3 +39,4 @@ export { default as VaccineList } from './Vaccination/VaccineList';
 export { default as CreateVaccine } from './Vaccination/CreateVaccine';
 export { default as ApplyVaccine } from './Vaccination/ApplyVaccine';
 export { default as ApplicationHistory } from './Vaccination/ApplicationHistory';
+export { default as AuditLogs } from './Admin/AuditLogs';

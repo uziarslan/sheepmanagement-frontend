@@ -7,7 +7,8 @@ import {
   HiOutlinePencil,
   HiOutlineTrash,
   HiOutlinePhone,
-  HiOutlineMail
+  HiOutlineMail,
+  HiOutlineKey
 } from 'react-icons/hi';
 import { employeeAPI } from '../../services/mockApi';
 import { formatCurrency, filterBySearch } from '../../utils/helpers';
@@ -23,10 +24,12 @@ import {
   TableBody,
   TableRow,
   TableCell,
-  TableEmpty
+  TableEmpty,
+  Modal,
+  ConfirmDialog,
+  Input,
+  PageLoader
 } from '../../components/common';
-import { ConfirmDialog } from '../../components/common/Modal';
-import { PageLoader } from '../../components/common/Spinner';
 
 const EmployeeList = () => {
   const navigate = useNavigate();
@@ -35,6 +38,13 @@ const EmployeeList = () => {
   const [search, setSearch] = useState('');
   const [deleteModal, setDeleteModal] = useState({ open: false, employee: null });
   const [deleting, setDeleting] = useState(false);
+  const [resetModal, setResetModal] = useState({ open: false, employee: null });
+  const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [resetForm, setResetForm] = useState({
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [resetErrors, setResetErrors] = useState({});
 
   // Helper to get id from item (supports both _id and id)
   const getId = (item) => item?._id ?? item?.id;
@@ -72,6 +82,53 @@ const EmployeeList = () => {
     }
   };
 
+  const openResetModal = (employee) => {
+    setResetModal({ open: true, employee });
+    setResetForm({ newPassword: '', confirmPassword: '' });
+    setResetErrors({});
+  };
+
+  const closeResetModal = () => {
+    setResetModal({ open: false, employee: null });
+    setResetForm({ newPassword: '', confirmPassword: '' });
+    setResetErrors({});
+  };
+
+  const handleResetChange = (e) => {
+    const { name, value } = e.target;
+    setResetForm((prev) => ({ ...prev, [name]: value }));
+    if (resetErrors[name]) {
+      setResetErrors((prev) => ({ ...prev, [name]: '' }));
+    }
+  };
+
+  const handleResetSubmit = async (e) => {
+    e.preventDefault();
+    if (!resetModal.employee) return;
+
+    const errors = {};
+    if (!resetForm.newPassword || resetForm.newPassword.length < 6) {
+      errors.newPassword = 'Password must be at least 6 characters';
+    }
+    if (resetForm.confirmPassword !== resetForm.newPassword) {
+      errors.confirmPassword = 'Passwords do not match';
+    }
+    setResetErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    const employeeId = getId(resetModal.employee);
+    setResetSubmitting(true);
+    try {
+      await employeeAPI.resetPassword(employeeId, resetForm.newPassword);
+      toast.success('Employee password reset successfully');
+      closeResetModal();
+    } catch (error) {
+      toast.error(error.message || 'Failed to reset password');
+    } finally {
+      setResetSubmitting(false);
+    }
+  };
+
   // Calculate totals
   const totalSalary = employees.reduce((sum, e) => sum + (e.salary || 0) + (e.allowances || 0), 0);
   const totalAdvance = employees.reduce((sum, e) => sum + (e.advanceBalance || 0), 0);
@@ -90,6 +147,9 @@ const EmployeeList = () => {
         breadcrumbs={[{ label: 'Employees' }]}
         action={
           <div className="flex gap-2">
+            <Link to="/dashboard/employees/users">
+              <Button variant="outline">User Management</Button>
+            </Link>
             <Link to="/dashboard/employees/salaries">
               <Button variant="outline">Salaries</Button>
             </Link>
@@ -227,6 +287,13 @@ const EmployeeList = () => {
                         <HiOutlinePencil className="w-5 h-5" />
                       </button>
                       <button
+                        onClick={() => openResetModal(employee)}
+                        className="p-2 text-gray-500 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors"
+                        title="Reset Password"
+                      >
+                        <HiOutlineKey className="w-5 h-5" />
+                      </button>
+                      <button
                         onClick={() => setDeleteModal({ open: true, employee })}
                         className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title="Delete"
@@ -258,6 +325,61 @@ const EmployeeList = () => {
         confirmText="Delete"
         loading={deleting}
       />
+
+      {/* Reset Password Modal */}
+      <Modal
+        isOpen={resetModal.open}
+        onClose={closeResetModal}
+        title={
+          resetModal.employee
+            ? `Reset Password - ${resetModal.employee.name}`
+            : 'Reset Password'
+        }
+        size="sm"
+      >
+        {!resetModal.employee ? (
+          <p className="text-sm text-gray-600">
+            Select an employee to reset their password.
+          </p>
+        ) : (
+          <form onSubmit={handleResetSubmit} className="space-y-4">
+            <Input
+              label="New Password"
+              type="password"
+              name="newPassword"
+              value={resetForm.newPassword}
+              onChange={handleResetChange}
+              error={resetErrors.newPassword}
+              required
+            />
+            <Input
+              label="Confirm Password"
+              type="password"
+              name="confirmPassword"
+              value={resetForm.confirmPassword}
+              onChange={handleResetChange}
+              error={resetErrors.confirmPassword}
+              required
+            />
+            <p className="text-xs text-gray-500">
+              The employee will be required to use this new password the next time they log in.
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={closeResetModal}
+                disabled={resetSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" loading={resetSubmitting}>
+                Reset Password
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   );
 };

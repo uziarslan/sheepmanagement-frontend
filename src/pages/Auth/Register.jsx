@@ -11,11 +11,12 @@ import {
   HiOutlineOfficeBuilding,
   HiOutlinePhone
 } from 'react-icons/hi';
-import { authAPI } from '../../services/mockApi';
 import Button from '../../components/common/Button';
+import { useAuth } from '../../Context/AuthContext';
 
 const Register = () => {
   const navigate = useNavigate();
+  const { register } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -80,11 +81,9 @@ const Register = () => {
 
     setLoading(true);
     try {
-      const response = await authAPI.register(formData);
-      if (response.success) {
-        toast.success('Registration successful! Welcome to Sheep Farm.');
-        navigate('/dashboard');
-      }
+      await register(formData);
+      toast.success('Registration successful! Welcome to Sheep Farm.');
+      navigate('/dashboard');
     } catch (error) {
       toast.error(error.message || 'Registration failed. Please try again.');
     } finally {

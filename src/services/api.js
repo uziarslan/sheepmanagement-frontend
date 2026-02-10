@@ -321,6 +321,18 @@ export const employeeAPI = {
     }
   },
 
+  resetPassword: async (id, newPassword) => {
+    try {
+      const response = await axiosInstance.patch(`/employees/${id}/reset-password`, {
+        newPassword,
+        confirmPassword: newPassword
+      });
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
   getWithAdvances: async () => {
     try {
       const response = await axiosInstance.get('/employees/with-advances');
@@ -794,6 +806,30 @@ export const salaryAPI = {
   create: async (data) => {
     try {
       const response = await axiosInstance.post('/salaries', data);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+};
+
+// ============ AUDIT API ============
+export const auditAPI = {
+  getAll: async (params = {}) => {
+    try {
+      const response = await axiosInstance.get('/audit-logs', { params });
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+};
+
+// ============ USER API ============
+export const userAPI = {
+  create: async (userData) => {
+    try {
+      const response = await axiosInstance.post('/users', userData);
       return handleResponse(response);
     } catch (error) {
       return handleError(error);

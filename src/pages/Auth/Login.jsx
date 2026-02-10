@@ -3,11 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { GiSheep } from 'react-icons/gi';
 import { HiOutlineMail, HiOutlineLockClosed, HiOutlineEye, HiOutlineEyeOff } from 'react-icons/hi';
-import { authAPI } from '../../services/mockApi';
 import Button from '../../components/common/Button';
+import { useAuth } from '../../Context/AuthContext';
 
 const Login = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -46,11 +47,9 @@ const Login = () => {
 
     setLoading(true);
     try {
-      const response = await authAPI.login(formData.email, formData.password);
-      if (response.success) {
-        toast.success('Login successful! Welcome back.');
-        navigate('/dashboard');
-      }
+      await login({ email: formData.email, password: formData.password });
+      toast.success('Login successful! Welcome back.');
+      navigate('/dashboard');
     } catch (error) {
       toast.error(error.message || 'Login failed. Please try again.');
     } finally {

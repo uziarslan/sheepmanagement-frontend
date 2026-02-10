@@ -13,5 +13,7 @@ export {
   capitalAPI,
   authAPI,
   dashboardAPI,
-  salaryAPI
+  salaryAPI,
+  auditAPI,
+  userAPI
 } from './api';

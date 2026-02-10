@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import DashboardLayout from './components/Layout/DashboardLayout';
+import { useAuth } from './Context/AuthContext';
 import {
   Login,
   Register,
@@ -26,6 +27,7 @@ import {
   EmployeeForm,
   EmployeeAdvance,
   EmployeeSalary,
+  UserManagement,
   Treatment,
   CureTracking,
   Deworming,
@@ -38,15 +40,32 @@ import {
   VaccineList,
   CreateVaccine,
   ApplyVaccine,
-  ApplicationHistory
+  ApplicationHistory,
+  AuditLogs
 } from './pages';
 
 // Protected Route Component
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem('token');
+  const { user, isLoading } = useAuth();
+
   if (!token) {
     return <Navigate to="/login" replace />;
   }
+
+  if (isLoading) {
+    return null;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    // Redirect non-admin users to a safe default page
+    return <Navigate to="/dashboard/animals" replace />;
+  }
+
   return children;
 };
 
@@ -117,10 +136,24 @@ function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Dashboard />} />
+          <Route
+            index
+            element={
+              <ProtectedRoute allowedRoles={['Admin']}>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
           
-          {/* Capital */}
-          <Route path="capital" element={<Capital />} />
+          {/* Capital (Admin only) */}
+          <Route
+            path="capital"
+            element={
+              <ProtectedRoute allowedRoles={['Admin']}>
+                <Capital />
+              </ProtectedRoute>
+            }
+          />
           
           {/* Animals */}
           <Route path="animals" element={<AnimalList />} />
@@ -148,13 +181,63 @@ function App() {
           <Route path="stock/farm-accessories/add" element={<StockAccessoryForm />} />
           <Route path="stock/:id/edit" element={<StockEdit />} />
           
-          {/* Employees */}
-          <Route path="employees" element={<EmployeeList />} />
-          <Route path="employees/add" element={<EmployeeForm />} />
-          <Route path="employees/advances" element={<EmployeeAdvance />} />
-          <Route path="employees/salaries" element={<EmployeeSalary />} />
-          <Route path="employees/:id" element={<EmployeeForm />} />
-          <Route path="employees/:id/edit" element={<EmployeeForm />} />
+          {/* Employees (Admin only) */}
+          <Route
+            path="employees"
+            element={
+              <ProtectedRoute allowedRoles={['Admin']}>
+                <EmployeeList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="employees/add"
+            element={
+              <ProtectedRoute allowedRoles={['Admin']}>
+                <EmployeeForm />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="employees/advances"
+            element={
+              <ProtectedRoute allowedRoles={['Admin']}>
+                <EmployeeAdvance />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="employees/salaries"
+            element={
+              <ProtectedRoute allowedRoles={['Admin']}>
+                <EmployeeSalary />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="employees/users"
+            element={
+              <ProtectedRoute allowedRoles={['Admin']}>
+                <UserManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="employees/:id"
+            element={
+              <ProtectedRoute allowedRoles={['Admin']}>
+                <EmployeeForm />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="employees/:id/edit"
+            element={
+              <ProtectedRoute allowedRoles={['Admin']}>
+                <EmployeeForm />
+              </ProtectedRoute>
+            }
+          />
           
           {/* Health & Veterinary */}
           <Route path="health/treatment" element={<Treatment />} />
@@ -176,6 +259,16 @@ function App() {
           <Route path="vaccination/vaccines/:id/edit" element={<CreateVaccine />} />
           <Route path="vaccination/apply" element={<ApplyVaccine />} />
           <Route path="vaccination/history" element={<ApplicationHistory />} />
+
+          {/* Admin */}
+          <Route
+            path="admin/audit-logs"
+            element={
+              <ProtectedRoute allowedRoles={['Admin']}>
+                <AuditLogs />
+              </ProtectedRoute>
+            }
+          />
         </Route>
 
         {/* Redirect root to login */}
