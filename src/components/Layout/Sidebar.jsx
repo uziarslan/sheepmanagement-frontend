@@ -91,7 +91,8 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
       submenu: [
         { name: 'All Employees', path: '/dashboard/employees' },
         { name: 'Add Employee', path: '/dashboard/employees/add' },
-        { name: 'Advances / Loans', path: '/dashboard/employees/advances' }
+        { name: 'Advances / Loans', path: '/dashboard/employees/advances' },
+        { name: 'Salaries', path: '/dashboard/employees/salaries' }
       ]
     },
     {

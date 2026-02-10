@@ -25,6 +25,7 @@ import {
   EmployeeList,
   EmployeeForm,
   EmployeeAdvance,
+  EmployeeSalary,
   Treatment,
   CureTracking,
   Deworming,
@@ -151,6 +152,7 @@ function App() {
           <Route path="employees" element={<EmployeeList />} />
           <Route path="employees/add" element={<EmployeeForm />} />
           <Route path="employees/advances" element={<EmployeeAdvance />} />
+          <Route path="employees/salaries" element={<EmployeeSalary />} />
           <Route path="employees/:id" element={<EmployeeForm />} />
           <Route path="employees/:id/edit" element={<EmployeeForm />} />
           

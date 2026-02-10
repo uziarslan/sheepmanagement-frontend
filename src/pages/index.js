@@ -21,6 +21,7 @@ export { default as StockEdit } from './Stock/StockEdit';
 export { default as EmployeeList } from './Employees/EmployeeList';
 export { default as EmployeeForm } from './Employees/EmployeeForm';
 export { default as EmployeeAdvance } from './Employees/EmployeeAdvance';
+export { default as EmployeeSalary } from './Employees/EmployeeSalary';
 // Health & Veterinary
 export { default as Treatment } from './Health/Treatment';
 export { default as CureTracking } from './Health/CureTracking';

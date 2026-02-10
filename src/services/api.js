@@ -780,6 +780,27 @@ export const capitalAPI = {
   }
 };
 
+// ============ SALARY API ============
+export const salaryAPI = {
+  getAll: async (params = {}) => {
+    try {
+      const response = await axiosInstance.get('/salaries', { params });
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  create: async (data) => {
+    try {
+      const response = await axiosInstance.post('/salaries', data);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+};
+
 // ============ AUTH API ============
 export const authAPI = {
   login: async (email, password) => {

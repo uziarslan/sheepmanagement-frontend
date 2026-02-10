@@ -89,9 +89,17 @@ const EmployeeList = () => {
         subtitle={`${employees.length} employees registered`}
         breadcrumbs={[{ label: 'Employees' }]}
         action={
-          <Link to="/dashboard/employees/add">
-            <Button icon={HiOutlinePlus}>Add Employee</Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link to="/dashboard/employees/salaries">
+              <Button variant="outline">Salaries</Button>
+            </Link>
+            <Link to="/dashboard/employees/advances">
+              <Button variant="outline">Advances</Button>
+            </Link>
+            <Link to="/dashboard/employees/add">
+              <Button icon={HiOutlinePlus}>Add Employee</Button>
+            </Link>
+          </div>
         }
       />
 

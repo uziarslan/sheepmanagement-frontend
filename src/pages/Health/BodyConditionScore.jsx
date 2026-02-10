@@ -69,9 +69,12 @@ const BodyConditionScore = () => {
   };
 
   const handleBcsChange = (animalId, value) => {
-    // BCS is typically 1-5 scale
     const numValue = parseFloat(value);
-    if (value === '' || (numValue >= 1 && numValue <= 5)) {
+    // Allow integer BCS values in 1-10 range
+    if (
+      value === '' ||
+      (Number.isFinite(numValue) && numValue >= 1 && numValue <= 10 && Number.isInteger(numValue))
+    ) {
       setEditedBcs(prev => ({ ...prev, [animalId]: value }));
     }
   };
@@ -151,10 +154,11 @@ const BodyConditionScore = () => {
 
   const getBcsColor = (bcs) => {
     if (!bcs) return 'bg-gray-100 text-gray-600';
-    if (bcs < 2) return 'bg-red-100 text-red-700';
-    if (bcs < 2.5) return 'bg-orange-100 text-orange-700';
-    if (bcs <= 3.5) return 'bg-emerald-100 text-emerald-700';
-    if (bcs <= 4) return 'bg-yellow-100 text-yellow-700';
+    // 1-10 scale thresholds: <4 very low, 4-5 low, 5-7 optimal, 7-8 high, >8 very high
+    if (bcs < 4) return 'bg-red-100 text-red-700';
+    if (bcs < 5) return 'bg-orange-100 text-orange-700';
+    if (bcs <= 7) return 'bg-emerald-100 text-emerald-700';
+    if (bcs <= 8) return 'bg-yellow-100 text-yellow-700';
     return 'bg-red-100 text-red-700';
   };
 
@@ -180,11 +184,11 @@ const BodyConditionScore = () => {
       const latestBcs = getLatestBcs(getId(a));
       if (!latestBcs) return filters.bcsRange === 'none';
       
-      const bcs = latestBcs.bcsValue;
+      const bcs = getBcsValue(latestBcs);
       switch (filters.bcsRange) {
-        case 'low': return bcs < 2.5;
-        case 'optimal': return bcs >= 2.5 && bcs <= 3.5;
-        case 'high': return bcs > 3.5;
+        case 'low': return bcs < 5;
+        case 'optimal': return bcs >= 5 && bcs <= 7;
+        case 'high': return bcs > 7;
         case 'none': return false;
         default: return true;
       }
@@ -198,7 +202,7 @@ const BodyConditionScore = () => {
   const animalsWithBcs = new Set(bcsRecords.map(r => getRecordAnimalId(r))).size;
   const lowBcsCount = animals.filter(a => {
     const bcs = getLatestBcs(getId(a));
-    return bcs && getBcsValue(bcs) < 2.5;
+    return bcs && getBcsValue(bcs) < 5;
   }).length;
 
   if (loading) {
@@ -258,11 +262,11 @@ const BodyConditionScore = () => {
         <h3 className="text-lg font-semibold text-gray-800 mb-4">BCS Scale Guide</h3>
         <div className="grid grid-cols-5 gap-3">
           {[
-            { score: '1', label: 'Emaciated', color: 'bg-red-100 border-red-300 text-red-700' },
-            { score: '2', label: 'Thin', color: 'bg-orange-100 border-orange-300 text-orange-700' },
-            { score: '3', label: 'Ideal', color: 'bg-emerald-100 border-emerald-300 text-emerald-700' },
-            { score: '4', label: 'Fat', color: 'bg-yellow-100 border-yellow-300 text-yellow-700' },
-            { score: '5', label: 'Obese', color: 'bg-red-100 border-red-300 text-red-700' }
+            { score: '1-2', label: 'Emaciated', color: 'bg-red-100 border-red-300 text-red-700' },
+            { score: '3-4', label: 'Thin', color: 'bg-orange-100 border-orange-300 text-orange-700' },
+            { score: '5-7', label: 'Ideal', color: 'bg-emerald-100 border-emerald-300 text-emerald-700' },
+            { score: '8-9', label: 'Fat', color: 'bg-yellow-100 border-yellow-300 text-yellow-700' },
+            { score: '10', label: 'Obese', color: 'bg-red-100 border-red-300 text-red-700' }
           ].map((item) => (
             <div key={item.score} className={`p-3 rounded-xl border-2 text-center ${item.color}`}>
               <p className="text-2xl font-bold">{item.score}</p>
@@ -312,9 +316,9 @@ const BodyConditionScore = () => {
                 value={filters.bcsRange}
                 onChange={handleFilterChange}
                 options={[
-                  { value: 'low', label: 'Low BCS (< 2.5)' },
-                  { value: 'optimal', label: 'Optimal BCS (2.5 - 3.5)' },
-                  { value: 'high', label: 'High BCS (> 3.5)' },
+                  { value: 'low', label: 'Low BCS (< 5)' },
+                  { value: 'optimal', label: 'Optimal BCS (5 - 7)' },
+                  { value: 'high', label: 'High BCS (> 7)' },
                   { value: 'none', label: 'No BCS Recorded' }
                 ]}
                 placeholder="All BCS Ranges"
@@ -388,12 +392,12 @@ const BodyConditionScore = () => {
                     <TableCell>
                       <Input
                         type="number"
-                        step="0.5"
+                        step="1"
                         min="1"
-                        max="5"
+                        max="10"
                         value={editedBcs[animalId] || ''}
                         onChange={(e) => handleBcsChange(animalId, e.target.value)}
-                        placeholder="1-5"
+                        placeholder="1-10"
                         className="w-24"
                       />
                     </TableCell>

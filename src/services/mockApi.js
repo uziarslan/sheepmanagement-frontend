@@ -12,5 +12,6 @@ export {
   vaccinationAPI,
   capitalAPI,
   authAPI,
-  dashboardAPI
+  dashboardAPI,
+  salaryAPI
 } from './api';
