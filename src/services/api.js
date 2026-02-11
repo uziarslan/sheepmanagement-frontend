@@ -139,6 +139,24 @@ export const animalAPI = {
     } catch (error) {
       return handleError(error);
     }
+  },
+
+  markAsSold: async (animalId, saleData) => {
+    try {
+      const response = await axiosInstance.put(`/animals/${animalId}/mark-sold`, saleData);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  bulkMarkAsSold: async (animalsData) => {
+    try {
+      const response = await axiosInstance.post('/animals/bulk-mark-sold', { animals: animalsData });
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
   }
 };
 

@@ -286,7 +286,7 @@ const AnimalForm = () => {
           </Card>
 
           {/* Photo Upload */}
-          <Card>
+          {/* <Card>
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Animal Photo</h3>
             <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl p-8 hover:border-emerald-500 transition-colors cursor-pointer">
               <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
@@ -311,7 +311,7 @@ const AnimalForm = () => {
                 <span className="text-sm text-gray-700">Has Pedigree Information</span>
               </label>
             </div>
-          </Card>
+          </Card> */}
 
           {/* Purchase Info */}
           <Card>

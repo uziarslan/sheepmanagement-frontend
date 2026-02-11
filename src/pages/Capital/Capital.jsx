@@ -152,57 +152,91 @@ const Capital = () => {
       />
 
       {/* Capital Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600">
-          <div className="text-white">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-emerald-100 font-medium">Total Capital</p>
-              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                <HiOutlineCurrencyDollar className="w-6 h-6 text-white" />
+      <div className="space-y-6">
+        {/* Total Capital — hero card full width */}
+        <Card className="bg-gradient-to-br from-emerald-500 to-emerald-700 overflow-hidden">
+          <div className="text-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 p-2">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
+                <HiOutlineCurrencyDollar className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <p className="text-emerald-100 font-medium text-sm uppercase tracking-wide">Total Capital</p>
+                <p className="text-3xl sm:text-4xl font-bold mt-1">{formatCurrency(capital?.totalCapital)}</p>
               </div>
             </div>
-            <p className="text-3xl font-bold">{formatCurrency(capital?.totalCapital)}</p>
-            <p className="text-emerald-100 text-sm mt-2">
+            <p className="text-emerald-100/90 text-sm sm:text-base border-t sm:border-t-0 sm:border-l border-white/20 pt-4 sm:pt-0 sm:pl-6">
               Last updated: {formatDate(capital?.lastUpdated)}
             </p>
           </div>
         </Card>
 
-        <Card className="bg-gradient-to-br from-blue-500 to-blue-600">
-          <div className="text-white">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-blue-100 font-medium">Available Balance</p>
-              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                <HiOutlineTrendingUp className="w-6 h-6 text-white" />
+        {/* Balance, Invested, Profit, Loss — 2x2 grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+          <Card className="bg-gradient-to-br from-blue-500 to-blue-600">
+            <div className="text-white p-1">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-blue-100 font-medium text-sm">Available Balance</p>
+                <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center">
+                  <HiOutlineTrendingUp className="w-5 h-5 text-white" />
+                </div>
               </div>
+              <p className="text-2xl font-bold">{formatCurrency(capital?.availableAmount)}</p>
+              <p className="text-blue-100 text-xs mt-2">
+                {capital?.totalCapital > 0
+                  ? `${((capital?.availableAmount / capital?.totalCapital) * 100).toFixed(1)}% available`
+                  : '0% available'}
+              </p>
             </div>
-            <p className="text-3xl font-bold">{formatCurrency(capital?.availableAmount)}</p>
-            <p className="text-blue-100 text-sm mt-2">
-              {capital?.totalCapital > 0 
-                ? `${((capital?.availableAmount / capital?.totalCapital) * 100).toFixed(1)}% available`
-                : '0% available'
-              }
-            </p>
-          </div>
-        </Card>
+          </Card>
 
-        <Card className="bg-gradient-to-br from-purple-500 to-purple-600">
-          <div className="text-white">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-purple-100 font-medium">Invested Amount</p>
-              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                <HiOutlineTrendingDown className="w-6 h-6 text-white" />
+          <Card className="bg-gradient-to-br from-purple-500 to-purple-600">
+            <div className="text-white p-1">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-purple-100 font-medium text-sm">Invested Amount</p>
+                <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center">
+                  <HiOutlineTrendingDown className="w-5 h-5 text-white" />
+                </div>
               </div>
+              <p className="text-2xl font-bold">{formatCurrency(capital?.investedAmount)}</p>
+              <p className="text-purple-100 text-xs mt-2">
+                {capital?.totalCapital > 0
+                  ? `${((capital?.investedAmount / capital?.totalCapital) * 100).toFixed(1)}% invested`
+                  : '0% invested'}
+              </p>
             </div>
-            <p className="text-3xl font-bold">{formatCurrency(capital?.investedAmount)}</p>
-            <p className="text-purple-100 text-sm mt-2">
-              {capital?.totalCapital > 0 
-                ? `${((capital?.investedAmount / capital?.totalCapital) * 100).toFixed(1)}% invested`
-                : '0% invested'
-              }
-            </p>
-          </div>
-        </Card>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-green-500 to-green-600">
+            <div className="text-white p-1">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-green-100 font-medium text-sm">Profit</p>
+                <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center">
+                  <HiOutlineTrendingUp className="w-5 h-5 text-white" />
+                </div>
+              </div>
+              <p className="text-2xl font-bold">{formatCurrency(capital?.profit ?? 0)}</p>
+              <p className="text-green-100 text-xs mt-2">
+                From animal sales after covering loss
+              </p>
+            </div>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-red-500 to-red-600">
+            <div className="text-white p-1">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-red-100 font-medium text-sm">Loss</p>
+                <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center">
+                  <HiOutlineTrendingDown className="w-5 h-5 text-white" />
+                </div>
+              </div>
+              <p className="text-2xl font-bold">{formatCurrency(capital?.loss ?? 0)}</p>
+              <p className="text-red-100 text-xs mt-2">
+                From dead animals; covered by sale profit first
+              </p>
+            </div>
+          </Card>
+        </div>
       </div>
 
       {/* Transaction History */}

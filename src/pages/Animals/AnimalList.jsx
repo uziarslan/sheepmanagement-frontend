@@ -7,7 +7,8 @@ import {
   HiOutlinePencil,
   HiOutlineTrash,
   HiOutlineFilter,
-  HiOutlineExclamationCircle
+  HiOutlineExclamationCircle,
+  HiOutlineShoppingCart
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
 import { animalAPI, penAPI } from '../../services/mockApi';
@@ -151,7 +152,12 @@ const AnimalList = () => {
         breadcrumbs={[{ label: 'Animals' }]}
         action={
           <div className="flex space-x-3">
-            <Link to="/dashboard/animals/declare-dead">
+            <Link to="/dashboard/animals/sell">
+              <Button variant="outline" icon={HiOutlineShoppingCart} className="border-emerald-200 text-emerald-600 hover:bg-emerald-50">
+                Sell Animals
+              </Button>
+            </Link>
+            <Link to="declare-dead">
               <Button variant="outline" icon={HiOutlineExclamationCircle} className="border-red-200 text-red-600 hover:bg-red-50">
                 Declare Dead
               </Button>

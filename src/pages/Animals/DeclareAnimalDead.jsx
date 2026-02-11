@@ -77,7 +77,7 @@ const DeclareAnimalDead = () => {
     try {
       const response = await animalAPI.declareDead(selectedAnimalId, deathData);
       if (response.success) {
-        toast.success('Animal marked as dead and costs distributed');
+        toast.success('Animal marked as dead; loss recorded in capital');
         setResult(response.data);
         setConfirmModal(false);
         // Remove the animal from the list
@@ -240,7 +240,7 @@ const DeclareAnimalDead = () => {
                     <span className="font-medium text-orange-600">{formatCurrency(selectedAnimal.cost || 0)}</span>
                   </div>
                   <div className="flex justify-between text-sm border-t pt-3 mt-3">
-                    <span className="font-semibold text-gray-900">Total Cost to Distribute</span>
+                    <span className="font-semibold text-gray-900">Total Cost (Recorded as Loss)</span>
                     <span className="font-bold text-red-600">
                       {formatCurrency(calculateTotalCost(selectedAnimal))}
                     </span>
@@ -252,17 +252,8 @@ const DeclareAnimalDead = () => {
                 <p className="text-sm text-amber-800">
                   <strong>Note:</strong> When this animal is marked as dead, its total cost of{' '}
                   <strong>{formatCurrency(calculateTotalCost(selectedAnimal))}</strong>{' '}
-                  will be distributed equally among the remaining{' '}
-                  <strong>{animals.length - 1}</strong> active animals.
+                  will be recorded as <strong>Loss</strong> in Capital. No cost is distributed to other animals.
                 </p>
-                {animals.length > 1 && (
-                  <p className="text-sm text-amber-700 mt-2">
-                    Each animal will receive:{' '}
-                    <strong>
-                      {formatCurrency(calculateTotalCost(selectedAnimal) / (animals.length - 1))}
-                    </strong>
-                  </p>
-                )}
               </div>
             </Card>
           )}
@@ -276,12 +267,10 @@ const DeclareAnimalDead = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
-                <h4 className="text-lg font-semibold text-green-800">Cost Distribution Complete</h4>
+                <h4 className="text-lg font-semibold text-green-800">Death Recorded</h4>
               </div>
               <div className="space-y-2 text-sm text-green-700">
-                <p>Total Cost Distributed: <strong>{formatCurrency(result.costDistributed)}</strong></p>
-                <p>Active Animals: <strong>{result.activeAnimalsCount}</strong></p>
-                <p>Cost Per Animal: <strong>{formatCurrency(result.costPerAnimal)}</strong></p>
+                <p>Loss recorded in Capital: <strong>{formatCurrency(result.lossRecorded ?? 0)}</strong></p>
               </div>
             </Card>
           )}
@@ -305,7 +294,7 @@ const DeclareAnimalDead = () => {
         title="Confirm Death Declaration"
         message={
           selectedAnimal
-            ? `Are you sure you want to mark "${selectedAnimal.name || selectedAnimal.tagId}" as dead? This will distribute ${formatCurrency(calculateTotalCost(selectedAnimal))} among all remaining active animals. This action cannot be undone.`
+            ? `Are you sure you want to mark "${selectedAnimal.name || selectedAnimal.tagId}" as dead? This will record ${formatCurrency(calculateTotalCost(selectedAnimal))} as loss in Capital. This action cannot be undone.`
             : 'Are you sure you want to proceed?'
         }
         confirmText="Confirm"

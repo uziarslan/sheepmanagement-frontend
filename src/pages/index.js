@@ -7,6 +7,7 @@ export { default as AnimalForm } from './Animals/AnimalForm';
 export { default as BulkUpload } from './Animals/BulkUpload';
 export { default as MoveToPen } from './Animals/MoveToPen';
 export { default as DeclareAnimalDead } from './Animals/DeclareAnimalDead';
+export { default as SellAnimal } from './Animals/SellAnimal';
 export { default as PenList } from './Pens/PenList';
 export { default as PenForm } from './Pens/PenForm';
 export { default as StockOverview } from './Stock/StockOverview';
