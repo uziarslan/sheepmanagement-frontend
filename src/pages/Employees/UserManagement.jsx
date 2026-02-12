@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-hot-toast';
-import { HiOutlineUserGroup, HiOutlineUserAdd, HiOutlineShieldCheck } from 'react-icons/hi';
+import { HiOutlineUserGroup, HiOutlineUserAdd, HiOutlineShieldCheck, HiOutlineKey } from 'react-icons/hi';
 import { employeeAPI, userAPI } from '../../services/mockApi';
 import {
   PageHeader,
@@ -8,13 +8,16 @@ import {
   Button,
   Input,
   Select,
-  PageLoader
+  PageLoader,
+  Modal,
+  Badge
 } from '../../components/common';
 
 const UserManagement = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [employees, setEmployees] = useState([]);
+  const [users, setUsers] = useState([]);
   const [mode, setMode] = useState('admin'); // 'admin' | 'employee'
 
   const [adminForm, setAdminForm] = useState({
@@ -29,6 +32,14 @@ const UserManagement = () => {
     password: ''
   });
   const [errors, setErrors] = useState({});
+
+  const [passwordModal, setPasswordModal] = useState({
+    open: false,
+    user: null,
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [passwordErrors, setPasswordErrors] = useState({});
 
   useEffect(() => {
     const fetchEmployees = async () => {
@@ -48,6 +59,21 @@ const UserManagement = () => {
     };
 
     fetchEmployees();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const res = await userAPI.getAll();
+      if (res?.success && Array.isArray(res.data)) {
+        setUsers(res.data);
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to load users');
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers();
   }, []);
 
   const employeeOptions = useMemo(
@@ -142,8 +168,61 @@ const UserManagement = () => {
         setEmployeeForm({ employeeId: '', email: '', password: '' });
       }
       setErrors({});
+      fetchUsers();
     } catch (error) {
       toast.error(error.message || 'Failed to create user');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openPasswordModal = (user) => {
+    setPasswordModal({
+      open: true,
+      user,
+      newPassword: '',
+      confirmPassword: ''
+    });
+    setPasswordErrors({});
+  };
+
+  const closePasswordModal = () => {
+    setPasswordModal({ open: false, user: null, newPassword: '', confirmPassword: '' });
+    setPasswordErrors({});
+  };
+
+  const handlePasswordModalChange = (e) => {
+    const { name, value } = e.target;
+    setPasswordModal((prev) => ({ ...prev, [name]: value }));
+    if (passwordErrors[name]) setPasswordErrors((prev) => ({ ...prev, [name]: '' }));
+  };
+
+  const validatePasswordForm = () => {
+    const err = {};
+    if (!passwordModal.newPassword || passwordModal.newPassword.length < 6) {
+      err.newPassword = 'Password must be at least 6 characters';
+    }
+    if (passwordModal.newPassword !== passwordModal.confirmPassword) {
+      err.confirmPassword = 'Passwords do not match';
+    }
+    setPasswordErrors(err);
+    return Object.keys(err).length === 0;
+  };
+
+  const handleChangePasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (!passwordModal.user) return;
+    if (!validatePasswordForm()) return;
+    setSubmitting(true);
+    try {
+      await userAPI.resetPassword(passwordModal.user._id || passwordModal.user.id, {
+        newPassword: passwordModal.newPassword,
+        confirmPassword: passwordModal.confirmPassword
+      });
+      toast.success('Password changed successfully');
+      closePasswordModal();
+    } catch (error) {
+      toast.error(error.message || 'Failed to change password');
     } finally {
       setSubmitting(false);
     }
@@ -296,6 +375,97 @@ const UserManagement = () => {
           </ul>
         </Card>
       </div>
+
+      {/* Existing logins – Change password */}
+      <Card>
+        <h3 className="text-lg font-semibold text-gray-800 mb-1">Existing logins</h3>
+        <p className="text-sm text-gray-500 mb-4">Change password for any user (Admin or Employee).</p>
+        {users.length === 0 ? (
+          <p className="text-sm text-gray-500 py-4">No users with login yet. Create an Admin or Employee login above.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-3 px-2 font-semibold text-gray-700">Name</th>
+                  <th className="text-left py-3 px-2 font-semibold text-gray-700">Email</th>
+                  <th className="text-left py-3 px-2 font-semibold text-gray-700">Role</th>
+                  <th className="text-left py-3 px-2 font-semibold text-gray-700">Employee</th>
+                  <th className="text-right py-3 px-2 font-semibold text-gray-700">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u._id || u.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="py-3 px-2 font-medium text-gray-900">{u.name}</td>
+                    <td className="py-3 px-2 text-gray-600">{u.email}</td>
+                    <td className="py-3 px-2">
+                      <Badge variant={u.role === 'Admin' ? 'info' : 'purple'}>{u.role}</Badge>
+                    </td>
+                    <td className="py-3 px-2 text-gray-600">
+                      {u.employee?.name ? `${u.employee.name}${u.employee.designation ? ` (${u.employee.designation})` : ''}` : '—'}
+                    </td>
+                    <td className="py-3 px-2 text-right">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        icon={HiOutlineKey}
+                        onClick={() => openPasswordModal(u)}
+                      >
+                        Change password
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Modal
+        isOpen={passwordModal.open}
+        onClose={closePasswordModal}
+        title="Change password"
+        size="md"
+      >
+        <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
+          {passwordModal.user && (
+            <p className="text-sm text-gray-600">
+              Setting a new password for <strong>{passwordModal.user.name}</strong> ({passwordModal.user.email}).
+            </p>
+          )}
+          <Input
+            label="New password"
+            type="password"
+            name="newPassword"
+            value={passwordModal.newPassword}
+            onChange={handlePasswordModalChange}
+            placeholder="At least 6 characters"
+            error={passwordErrors.newPassword}
+            required
+          />
+          <Input
+            label="Confirm password"
+            type="password"
+            name="confirmPassword"
+            value={passwordModal.confirmPassword}
+            onChange={handlePasswordModalChange}
+            placeholder="Re-enter new password"
+            error={passwordErrors.confirmPassword}
+            required
+          />
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+            <Button type="button" variant="secondary" onClick={closePasswordModal}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={submitting}>
+              Update password
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

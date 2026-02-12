@@ -11,6 +11,7 @@ import {
   HiOutlineShoppingCart
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
+import { useAuth } from '../../Context/AuthContext';
 import { animalAPI, penAPI } from '../../services/mockApi';
 import { formatCurrency, getStatusColor, filterBySearch } from '../../utils/helpers';
 import {
@@ -34,6 +35,8 @@ import { animalTypes, breedTypes, animalStatuses } from '../../data/mockData';
 
 const AnimalList = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'Admin';
   const [animals, setAnimals] = useState([]);
   const [pens, setPens] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -152,11 +155,13 @@ const AnimalList = () => {
         breadcrumbs={[{ label: 'Animals' }]}
         action={
           <div className="flex space-x-3">
-            <Link to="/dashboard/animals/sell">
-              <Button variant="outline" icon={HiOutlineShoppingCart} className="border-emerald-200 text-emerald-600 hover:bg-emerald-50">
-                Sell Animals
-              </Button>
-            </Link>
+            {isAdmin && (
+              <Link to="/dashboard/animals/sell">
+                <Button variant="outline" icon={HiOutlineShoppingCart} className="border-emerald-200 text-emerald-600 hover:bg-emerald-50">
+                  Sell Animals
+                </Button>
+              </Link>
+            )}
             <Link to="declare-dead">
               <Button variant="outline" icon={HiOutlineExclamationCircle} className="border-red-200 text-red-600 hover:bg-red-50">
                 Declare Dead

@@ -769,12 +769,30 @@ const BodyWeight = () => {
                           </p>
                         </div>
                       </td>
-                      {weekColumns.map(w => {
+                      {weekColumns.map((w, wi) => {
                         const cell = weightsByAnimalWeek.get(`${animalId}|${w}`);
+                        const currentWeight = cell?.weight != null ? Number(cell.weight) : null;
+                        const prevWeek = wi > 0 ? weekColumns[wi - 1] : null;
+                        const prevCell = prevWeek ? weightsByAnimalWeek.get(`${animalId}|${prevWeek}`) : null;
+                        const prevWeight = prevCell?.weight != null ? Number(prevCell.weight) : null;
+
+                        let cellBg = '';
+                        if (currentWeight != null) {
+                          if (prevWeight == null) {
+                            cellBg = 'bg-yellow-100 text-yellow-900';
+                          } else if (currentWeight > prevWeight) {
+                            cellBg = 'bg-green-100 text-green-800';
+                          } else if (currentWeight < prevWeight) {
+                            cellBg = 'bg-red-100 text-red-800';
+                          } else {
+                            cellBg = 'bg-yellow-100 text-yellow-900';
+                          }
+                        }
+
                         return (
-                          <td key={w} className="px-3 py-3 text-center whitespace-nowrap">
-                            {cell?.weight != null ? (
-                              <span className="text-sm font-medium text-gray-900">{cell.weight}</span>
+                          <td key={w} className={`px-3 py-3 text-center whitespace-nowrap ${cellBg || ''}`}>
+                            {currentWeight != null ? (
+                              <span className="text-sm font-medium">{cell.weight}</span>
                             ) : (
                               <span className="text-sm text-gray-300">-</span>
                             )}

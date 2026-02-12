@@ -854,9 +854,30 @@ export const auditAPI = {
 
 // ============ USER API ============
 export const userAPI = {
+  getAll: async () => {
+    try {
+      const response = await axiosInstance.get('/users');
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
   create: async (userData) => {
     try {
       const response = await axiosInstance.post('/users', userData);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  resetPassword: async (userId, { newPassword, confirmPassword }) => {
+    try {
+      const response = await axiosInstance.patch(`/users/${userId}/password`, {
+        newPassword,
+        confirmPassword
+      });
       return handleResponse(response);
     } catch (error) {
       return handleError(error);

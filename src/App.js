@@ -163,7 +163,7 @@ function App() {
           <Route path="animals/bulk-upload" element={<BulkUpload />} />
           <Route path="animals/move-to-pen" element={<MoveToPen />} />
           <Route path="animals/declare-dead" element={<DeclareAnimalDead />} />
-          <Route path="animals/sell" element={<SellAnimal />} />
+          <Route path="animals/sell" element={<ProtectedRoute allowedRoles={['Admin']}><SellAnimal /></ProtectedRoute>} />
           <Route path="animals/:id" element={<AnimalForm />} />
           <Route path="animals/:id/edit" element={<AnimalForm />} />
           
