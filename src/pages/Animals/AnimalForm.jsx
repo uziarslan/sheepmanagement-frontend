@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { HiOutlineArrowLeft, HiOutlineCamera } from 'react-icons/hi';
+import { HiOutlineArrowLeft } from 'react-icons/hi';
 import { animalAPI, penAPI } from '../../services/mockApi';
 import {
   PageHeader,

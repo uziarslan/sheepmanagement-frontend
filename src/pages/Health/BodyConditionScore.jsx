@@ -15,7 +15,6 @@ import {
   Input,
   Select,
   SearchInput,
-  Badge,
   Table,
   TableHead,
   TableHeader,
@@ -128,14 +127,6 @@ const BodyConditionScore = () => {
     const animalRecords = bcsRecords.filter(r => getRecordAnimalId(r) === animalIdStr);
     if (animalRecords.length === 0) return null;
     return animalRecords.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-  };
-
-  const getPreviousBcs = (animalId) => {
-    const animalIdStr = String(animalId);
-    const animalRecords = bcsRecords.filter(r => getRecordAnimalId(r) === animalIdStr);
-    if (animalRecords.length < 2) return null;
-    const sorted = animalRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
-    return sorted[1];
   };
 
   const calculateAge = (birthDate) => {
@@ -352,7 +343,6 @@ const BodyConditionScore = () => {
               filteredAnimals.map((animal) => {
                 const animalId = getId(animal);
                 const latestBcs = getLatestBcs(animalId);
-                const previousBcs = getPreviousBcs(animalId);
                 
                 return (
                   <TableRow key={animalId}>

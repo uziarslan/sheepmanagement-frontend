@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -35,6 +35,7 @@ const StockCategoryBulkUpload = ({
 }) => {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  // eslint-disable-next-line no-unused-vars
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [parsedData, setParsedData] = useState([]);

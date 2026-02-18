@@ -9,7 +9,7 @@ import {
   HiOutlineCalendar
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
-import { feedAPI, penAPI, animalAPI } from '../../services/mockApi';
+import { feedAPI, penAPI } from '../../services/mockApi';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
   PageHeader,
@@ -52,7 +52,7 @@ const ApplyRecipe = () => {
 
   useEffect(() => {
     if (formData.recipeId) {
-      const recipe = recipes.find(r => getId(r) == formData.recipeId);
+      const recipe = recipes.find(r => String(getId(r)) === String(formData.recipeId));
       setSelectedRecipe(recipe || null);
       if (recipe && !formData.penId) {
         const recipePen = recipe.pen?._id || recipe.pen || recipe.penId;
@@ -61,6 +61,7 @@ const ApplyRecipe = () => {
     } else {
       setSelectedRecipe(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.recipeId, recipes]);
 
   const fetchData = async () => {
@@ -120,7 +121,7 @@ const ApplyRecipe = () => {
     try {
       const recipeIdKey = String(formData.recipeId).trim();
       const penIdKey = String(formData.penId).trim();
-      const pen = pens.find(p => getId(p) == penIdKey);
+      const pen = pens.find(p => String(getId(p)) === String(penIdKey));
       
       const applicationData = {
         recipe: recipeIdKey,
@@ -164,7 +165,7 @@ const ApplyRecipe = () => {
     }
   };
 
-  const selectedPen = pens.find(p => getId(p) == formData.penId);
+  const selectedPen = pens.find(p => String(getId(p)) === String(formData.penId));
 
   if (loading) {
     return <PageLoader />;

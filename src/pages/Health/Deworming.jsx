@@ -8,7 +8,7 @@ import {
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
 import { animalAPI, penAPI, stockAPI, employeeAPI, healthAPI } from '../../services/mockApi';
-import { formatCurrency, formatDate, filterBySearch } from '../../utils/helpers';
+import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
   PageHeader,
   Card,
@@ -107,7 +107,7 @@ const Deworming = () => {
 
     // Auto-select all animals in pen when pen changes
     if (name === 'penId' && value && formData.scope === 'Shed') {
-      const penAnimals = animals.filter(a => getAnimalPenId(a) == value);
+      const penAnimals = animals.filter(a => String(getAnimalPenId(a)) === String(value));
       setFormData(prev => ({ ...prev, animalIds: penAnimals.map(a => getId(a)) }));
     }
   };
@@ -123,7 +123,7 @@ const Deworming = () => {
       return;
     }
 
-    const medicine = medicines.find(m => getId(m) == selectedMedicine.medicineId);
+    const medicine = medicines.find(m => String(getId(m)) === String(selectedMedicine.medicineId));
     if (!medicine) return;
 
     const medicineIdKey = getId(medicine);
@@ -187,7 +187,7 @@ const Deworming = () => {
     setSubmitting(true);
     try {
       const technicianIdKey = formData.technicianId ? String(formData.technicianId).trim() : null;
-      const technician = technicianIdKey ? employees.find(e => getId(e) == technicianIdKey) : null;
+      const technician = technicianIdKey ? employees.find(e => String(getId(e)) === String(technicianIdKey)) : null;
       const scopeForBackend = formData.scope === 'Individual' ? 'Individual Animal' : formData.scope;
 
       // For Shed scope, use formData.penId; for Individual, derive pen from selected animal
@@ -195,15 +195,15 @@ const Deworming = () => {
       let penNameValue = null;
       if (scopeForBackend === 'Shed' && formData.penId) {
         penIdKey = String(formData.penId).trim();
-        const pen = pens.find(p => getId(p) == penIdKey);
+        const pen = pens.find(p => String(getId(p)) === String(penIdKey));
         penNameValue = pen?.name != null && String(pen.name).trim() !== '' ? String(pen.name).trim() : null;
       } else if (scopeForBackend === 'Individual Animal' && formData.animalIds.length > 0) {
         // Get pen from the first selected animal
-        const selectedAnimal = animals.find(a => getId(a) == formData.animalIds[0]);
+        const selectedAnimal = animals.find(a => String(getId(a)) === String(formData.animalIds[0]));
         const animalPenId = getAnimalPenId(selectedAnimal);
         if (animalPenId) {
           penIdKey = String(animalPenId);
-          const pen = pens.find(p => getId(p) == animalPenId);
+          const pen = pens.find(p => String(getId(p)) === String(animalPenId));
           penNameValue = pen?.name != null && String(pen.name).trim() !== '' ? String(pen.name).trim() : null;
         }
       }
@@ -299,7 +299,7 @@ const Deworming = () => {
 
   // Filter animals by pen if scope is Shed (use _id/pen for API data)
   const eligibleAnimals = formData.scope === 'Shed' && formData.penId
-    ? animals.filter(a => getAnimalPenId(a) == formData.penId)
+    ? animals.filter(a => String(getAnimalPenId(a)) === String(formData.penId))
     : animals;
 
   if (loading) {

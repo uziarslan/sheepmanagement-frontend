@@ -7,8 +7,7 @@ import {
   HiOutlineCalendar,
   HiOutlineCreditCard,
   HiOutlineCurrencyRupee,
-  HiOutlineUserGroup,
-  HiOutlinePlus
+  HiOutlineUserGroup
 } from 'react-icons/hi';
 import { employeeAPI, salaryAPI } from '../../services/mockApi';
 import { formatCurrency, formatDate } from '../../utils/helpers';

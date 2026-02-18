@@ -48,6 +48,7 @@ const FeedRecipeForm = () => {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const fetchData = async () => {
@@ -88,15 +89,9 @@ const FeedRecipeForm = () => {
     setSelectedIngredient(prev => ({ ...prev, [name]: value }));
   };
 
-  // Get available stock for a given stock item
-  const getAvailableStock = (stockId) => {
-    const stock = feedItems.find(f => getId(f) == stockId);
-    return stock?.currentQty ?? 0;
-  };
-
   // Get selected ingredient's available stock
   const selectedStock = selectedIngredient.stockId 
-    ? feedItems.find(f => getId(f) == selectedIngredient.stockId) 
+    ? feedItems.find(f => String(getId(f)) === String(selectedIngredient.stockId)) 
     : null;
   const selectedStockAvailable = selectedStock?.currentQty ?? 0;
 
@@ -106,7 +101,7 @@ const FeedRecipeForm = () => {
       return;
     }
 
-    const stock = feedItems.find(f => getId(f) == selectedIngredient.stockId);
+    const stock = feedItems.find(f => String(getId(f)) === String(selectedIngredient.stockId));
     if (!stock) return;
 
     const stockIdKey = getId(stock);
@@ -125,7 +120,7 @@ const FeedRecipeForm = () => {
     }
 
     // Check if ingredient already added
-    if (formData.ingredients.some(i => (i.stockId || i.stock) == stockIdKey)) {
+    if (formData.ingredients.some(i => String(i.stockId || i.stock) === String(stockIdKey))) {
       toast.error('Ingredient already added');
       return;
     }
@@ -223,7 +218,7 @@ const FeedRecipeForm = () => {
     setSubmitting(true);
     try {
       const penIdKey = String(formData.penId).trim();
-      const pen = pens.find(p => getId(p) == penIdKey);
+      const pen = pens.find(p => String(getId(p)) === String(penIdKey));
       
       const recipeData = {
         name: formData.name,
@@ -240,12 +235,11 @@ const FeedRecipeForm = () => {
         }))
       };
 
-      let response;
       if (isEdit) {
-        response = await feedAPI.updateRecipe(id, recipeData);
+        await feedAPI.updateRecipe(id, recipeData);
         toast.success('Recipe updated successfully');
       } else {
-        response = await feedAPI.createRecipe(recipeData);
+        await feedAPI.createRecipe(recipeData);
         toast.success('Recipe created successfully');
       }
 
@@ -483,11 +477,11 @@ const FeedRecipeForm = () => {
                   <p className="text-sm text-blue-600">Cost per Animal</p>
                   <p className="text-2xl font-bold text-blue-700">
                     {formatCurrency(
-                      totalCost / (pens.find(p => getId(p) == formData.penId)?.animalCount || 1)
+                      totalCost / (pens.find(p => String(getId(p)) === String(formData.penId))?.animalCount || 1)
                     )}
                   </p>
                   <p className="text-xs text-blue-500 mt-1">
-                    Based on {pens.find(p => getId(p) == formData.penId)?.animalCount || 0} animals
+                    Based on {pens.find(p => String(getId(p)) === String(formData.penId))?.animalCount || 0} animals
                   </p>
                 </div>
               )}

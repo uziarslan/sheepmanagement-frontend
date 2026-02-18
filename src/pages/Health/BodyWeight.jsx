@@ -249,12 +249,6 @@ const BodyWeight = () => {
     setErrors({});
   };
 
-  const getWeightHistory = (animalId) => {
-    return weightRecords
-      .filter(w => String(w.animal?._id || w.animal || w.animalId || '') === String(animalId || ''))
-      .sort((a, b) => new Date(b.date) - new Date(a.date));
-  };
-
   const filteredAnimals = useMemo(() => {
     let list = filterBySearch(animals, search, ['tagId', 'name', 'breedType']);
     if (penFilter) {
@@ -1006,7 +1000,7 @@ const BodyWeight = () => {
           {formData.animalId && (
             <div className="p-4 bg-gray-50 rounded-xl">
               {(() => {
-                const animal = animals.find(a => getId(a) == formData.animalId);
+                const animal = animals.find(a => String(getId(a)) === String(formData.animalId));
                 return animal ? (
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center">
@@ -1051,7 +1045,7 @@ const BodyWeight = () => {
           {formData.weight && formData.animalId && (
             <div className="p-4 bg-emerald-50 rounded-xl">
               {(() => {
-                const animal = animals.find(a => getId(a) == formData.animalId);
+                const animal = animals.find(a => String(getId(a)) === String(formData.animalId));
                 const change = parseFloat(formData.weight) - (animal?.weight || 0);
                 return (
                   <div className="flex items-center justify-between">

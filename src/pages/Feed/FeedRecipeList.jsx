@@ -10,7 +10,7 @@ import {
   HiOutlineBeaker
 } from 'react-icons/hi';
 import { feedAPI } from '../../services/mockApi';
-import { formatCurrency, formatDate, filterBySearch } from '../../utils/helpers';
+import { formatCurrency, filterBySearch } from '../../utils/helpers';
 import {
   PageHeader,
   Card,

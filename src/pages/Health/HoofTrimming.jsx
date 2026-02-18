@@ -8,7 +8,7 @@ import {
 } from 'react-icons/hi';
 import { GiSheep, GiFootprint } from 'react-icons/gi';
 import { animalAPI, employeeAPI, healthAPI } from '../../services/mockApi';
-import { formatCurrency, formatDate, filterBySearch } from '../../utils/helpers';
+import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
   PageHeader,
   Card,
@@ -127,8 +127,8 @@ const HoofTrimming = () => {
     try {
       const animalIdKey = String(formData.animalId).trim();
       const technicianIdKey = formData.technicianId ? String(formData.technicianId).trim() : null;
-      const animal = animals.find(a => getId(a) == animalIdKey);
-      const technician = technicianIdKey ? employees.find(e => getId(e) == technicianIdKey) : null;
+      const animal = animals.find(a => String(getId(a)) === String(animalIdKey));
+      const technician = technicianIdKey ? employees.find(e => String(getId(e)) === String(technicianIdKey)) : null;
 
       // Backend expects hoofDetails as array: [{ position, condition, trimmed, notes }]
       // position: 'Front Left' | 'Front Right' | 'Rear Left' | 'Rear Right'

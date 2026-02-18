@@ -1,5 +1,5 @@
 import React from 'react';
-import { HiOutlineMenu, HiOutlineBell, HiOutlineUser } from 'react-icons/hi';
+import { HiOutlineMenu, HiOutlineUser } from 'react-icons/hi';
 
 const Header = ({ setSidebarOpen, user }) => {
   return (

@@ -6,12 +6,11 @@ import {
   HiOutlinePencil,
   HiOutlineTrash,
   HiOutlineX,
-  HiOutlineCheck,
-  HiOutlineClipboardList
+  HiOutlineCheck
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
 import { animalAPI, stockAPI, healthAPI } from '../../services/mockApi';
-import { formatCurrency, formatDate, filterBySearch } from '../../utils/helpers';
+import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
   PageHeader,
   Card,
@@ -111,7 +110,7 @@ const Treatment = () => {
 
     // Auto-set unit from medicine data
     if (name === 'medicineId' && value) {
-      const medicine = medicines.find(m => getId(m) == value);
+      const medicine = medicines.find(m => String(getId(m)) === String(value));
       if (medicine) {
         setSelectedMedicine(prev => ({ ...prev, unit: medicine.unit }));
       }
@@ -124,7 +123,7 @@ const Treatment = () => {
       return;
     }
 
-    const medicine = medicines.find(m => getId(m) == selectedMedicine.medicineId);
+    const medicine = medicines.find(m => String(getId(m)) === String(selectedMedicine.medicineId));
     if (!medicine) return;
 
     const medicineIdKey = getId(medicine);
@@ -178,7 +177,7 @@ const Treatment = () => {
     setSubmitting(true);
     try {
       const animalIdKey = String(formData.animalId).trim();
-      const animal = animals.find(a => getId(a) == animalIdKey);
+      const animal = animals.find(a => String(getId(a)) === String(animalIdKey));
       
       // Build backend-compatible payload
       const treatmentData = {

@@ -116,15 +116,9 @@ const AnimalList = () => {
     }
     // Otherwise look up pen by ID
     const penId = getAnimalPenId(animal);
-    if (penId == null || penId === '') return '-';
-    const foundPen = pens.find(p => (p._id || p.id) == penId);
+    if (penId === null || penId === undefined || penId === '') return '-';
+    const foundPen = pens.find(p => String(p._id || p.id) === String(penId));
     return foundPen ? foundPen.name : '-';
-  };
-
-  const getPenNameById = (penId) => {
-    if (penId == null || penId === '') return '-';
-    const pen = pens.find(p => (p._id || p.id) == penId);
-    return pen ? pen.name : '-';
   };
 
   // Filter animals
@@ -140,7 +134,7 @@ const AnimalList = () => {
     filteredAnimals = filteredAnimals.filter(a => a.status === filters.status);
   }
   if (filters.penId) {
-    filteredAnimals = filteredAnimals.filter(a => getAnimalPenId(a) == filters.penId);
+    filteredAnimals = filteredAnimals.filter(a => String(getAnimalPenId(a)) === String(filters.penId));
   }
 
   if (loading) {

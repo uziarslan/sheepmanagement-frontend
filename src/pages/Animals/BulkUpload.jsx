@@ -10,7 +10,6 @@ import {
   HiOutlineCheck,
   HiOutlineExclamation,
   HiOutlineX,
-  HiOutlineRefresh,
   HiOutlineExclamationCircle
 } from 'react-icons/hi';
 import { animalAPI, penAPI } from '../../services/mockApi';
@@ -24,9 +23,7 @@ import {
   TableHeader,
   TableBody,
   TableRow,
-  TableCell,
-  TableEmpty,
-  Select
+  TableCell
 } from '../../components/common';
 import { PageLoader } from '../../components/common/Spinner';
 import {
@@ -179,6 +176,7 @@ const BulkUpload = () => {
   };
 
   // Get friendly error message
+  // eslint-disable-next-line no-unused-vars
   const getFriendlyErrorMessage = (key, value) => {
     const fieldLabels = {
       tagId: 'Tag ID',
@@ -615,6 +613,7 @@ const BulkUpload = () => {
   const noPenCount = parsedData.filter(r => !r.penId).length;
 
   // Pen options for dropdown
+  // eslint-disable-next-line no-unused-vars
   const penOptions = [
     { value: '', label: 'Select Pen...' },
     ...pens.map(p => ({ 

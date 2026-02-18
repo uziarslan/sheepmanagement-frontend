@@ -150,7 +150,7 @@ const EmployeeAdvance = () => {
         // Update employee balance in local state
         const employeeIdKey = formData.employeeId;
         setEmployees(prev => prev.map(emp => {
-          if ((emp._id || emp.id) == employeeIdKey) {
+          if (String(emp._id || emp.id) === String(employeeIdKey)) {
             const newBalance = modalType === 'give'
               ? (emp.advanceBalance || 0) + advanceData.amount
               : (emp.advanceBalance || 0) - advanceData.amount;
@@ -173,7 +173,7 @@ const EmployeeAdvance = () => {
 
   const getEmployeeById = (id) => {
     if (id == null || id === '') return null;
-    return employees.find(e => (e._id || e.id) == id);
+    return employees.find(e => String(e._id || e.id) === String(id));
   };
 
   // Calculate totals

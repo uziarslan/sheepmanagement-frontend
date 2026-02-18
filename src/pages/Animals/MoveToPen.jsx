@@ -79,20 +79,20 @@ const MoveToPen = () => {
     }
     // Otherwise look up pen by ID
     const penId = getAnimalPenId(animal);
-    if (penId == null) return 'Unassigned';
-    const foundPen = pens.find(p => (p._id || p.id) == penId);
+    if (penId === null || penId === undefined) return 'Unassigned';
+    const foundPen = pens.find(p => String(p._id || p.id) === String(penId));
     return foundPen ? foundPen.name : 'Unassigned';
   };
 
   const getPenName = (penId) => {
-    if (penId == null) return 'Unassigned';
-    const pen = pens.find(p => (p._id || p.id) == penId);
+    if (penId === null || penId === undefined) return 'Unassigned';
+    const pen = pens.find(p => String(p._id || p.id) === String(penId));
     return pen ? pen.name : 'Unassigned';
   };
 
   const getPenById = (penId) => {
-    if (penId == null) return null;
-    return pens.find(p => (p._id || p.id) == penId);
+    if (penId === null || penId === undefined) return null;
+    return pens.find(p => String(p._id || p.id) === String(penId));
   };
 
   // Check if animal's weight is within pen's weight range
@@ -126,7 +126,7 @@ const MoveToPen = () => {
   if (penFilter === 'unassigned') {
     filteredAnimals = filteredAnimals.filter(a => !getAnimalPenId(a));
   } else if (penFilter) {
-    filteredAnimals = filteredAnimals.filter(a => getAnimalPenId(a) == penFilter);
+    filteredAnimals = filteredAnimals.filter(a => String(getAnimalPenId(a)) === String(penFilter));
   }
 
   // Apply weight range filter (user-entered range for global filtering)
@@ -166,7 +166,7 @@ const MoveToPen = () => {
     .filter(p => {
       // If all selected animals are from the same pen, exclude that pen
       if (selectedAnimalPenIds.length === 1 && selectedAnimalPenIds[0]) {
-        return getId(p) != selectedAnimalPenIds[0];
+        return String(getId(p)) !== String(selectedAnimalPenIds[0]);
       }
       return true;
     })
