@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import {  useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { GiSheep } from 'react-icons/gi';
 import { HiOutlineMail, HiOutlineLockClosed, HiOutlineEye, HiOutlineEyeOff } from 'react-icons/hi';
@@ -162,14 +162,14 @@ const Login = () => {
           </form>
 
           {/* Register Link */}
-          <div className="mt-6 text-center">
+          {/* <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
               Don't have an account?{' '}
               <Link to="/register" className="text-emerald-600 hover:text-emerald-700 font-medium">
                 Create Account
               </Link>
             </p>
-          </div>
+          </div> */}
         </div>
 
       </div>
