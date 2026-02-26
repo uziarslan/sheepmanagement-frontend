@@ -106,7 +106,7 @@ const StockCategoryBulkUpload = ({
     const parseNumber = (val) => {
       if (val === null || val === undefined) return NaN;
       // Remove common thousand separators, spaces and currency symbols
-      const s = String(val).replace(/[,\s\u00A0\u202F]/g, '').replace(/[^0-9.\-]/g, '');
+      const s = String(val).replace(/[,\s\u00A0\u202F]/g, '').replace(/[^0-9.-]/g, '');
       return s === '' ? NaN : parseFloat(s);
     };
 
