@@ -122,31 +122,19 @@ const ApplyRecipe = () => {
       const recipeIdKey = String(formData.recipeId).trim();
       const penIdKey = String(formData.penId).trim();
       const pen = pens.find(p => String(getId(p)) === String(penIdKey));
-      
+
+      // Send recipe + pen to backend — the backend owns FIFO validation & deduction
       const applicationData = {
         recipe: recipeIdKey,
-        recipeName: selectedRecipe.name,
         pen: penIdKey,
-        penName: pen?.name,
-        animalCount: pen?.animalCount || 0,
         date: formData.date,
-        ingredients: (selectedRecipe.ingredients || []).map(i => ({
-          stock: i.stockId || i.stock,
-          name: i.name,
-          unit: i.unit,
-          rate: i.ratePerUnit ?? i.rate,
-          quantity: i.quantity,
-          total: i.total
-        })),
-        totalCost: selectedRecipe.totalCost,
-        costPerAnimal: pen?.animalCount > 0 ? selectedRecipe.totalCost / pen.animalCount : 0,
         notes: formData.notes || null
       };
 
       const response = await feedAPI.applyRecipe(applicationData);
       
       if (response.success) {
-        toast.success(`Recipe applied to ${pen?.animalCount || 0} animals in ${pen?.name}`);
+        toast.success(`Recipe applied to ${pen?.name || 'shed'} successfully`);
         setApplications(prev => [response.data, ...prev]);
         
         // Reset form

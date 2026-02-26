@@ -10,6 +10,7 @@ import {
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
 import { animalAPI, stockAPI, healthAPI } from '../../services/mockApi';
+import { groupStocksByNameAndRate, deductStockFifo } from '../../utils/stockUtils';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
   PageHeader,
@@ -89,7 +90,10 @@ const Treatment = () => {
       ]);
       
       if (animalsRes.success) setAnimals(animalsRes.data.filter(a => a.status === 'Active'));
-      if (stocksRes.success) setMedicines(stocksRes.data.filter(s => s.category === 'Medication'));
+      if (stocksRes.success) {
+        const meds = stocksRes.data.filter(s => s.category === 'Medication');
+        setMedicines(groupStocksByNameAndRate(meds));
+      }
       if (treatmentsRes.success) setTreatments(treatmentsRes.data);
     } catch (error) {
       toast.error('Failed to fetch data');
@@ -140,7 +144,8 @@ const Treatment = () => {
       rate: medicine.openingRatePerUnit || 0,
       unit: selectedMedicine.unit,
       quantity: qty,
-      total: qty * (medicine.openingRatePerUnit || 0)
+      total: qty * (medicine.openingRatePerUnit || 0),
+      _stockItem: medicine  // keep for FIFO deduction
     };
 
     setFormData(prev => ({
@@ -216,6 +221,19 @@ const Treatment = () => {
         if (response.success) {
           setTreatments(prev => [response.data, ...prev]);
           toast.success('Treatment recorded successfully');
+
+          // FIFO stock deduction
+          try {
+            await Promise.all(
+              formData.medicines.map(m =>
+                m._stockItem
+                  ? deductStockFifo(stockAPI, m._stockItem, m.quantity, 'Treatment')
+                  : Promise.resolve()
+              )
+            );
+          } catch (deductErr) {
+            console.error('Stock deduction failed:', deductErr);
+          }
         }
       }
       

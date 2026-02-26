@@ -115,7 +115,9 @@ const BulkUpload = () => {
     { key: 'purchasedFrom', label: 'Purchased From', required: false, example: 'Pakistan', options: countries },
     { key: 'arrivalDate', label: 'Arrival Date', required: true, example: '2025-01-15' },
     { key: 'birthDate', label: 'Birth Date', required: false, example: '2024-06-15' },
-    { key: 'weight', label: 'Weight (kg)', required: true, example: '35' },
+    { key: 'purchasePrice', label: 'Purchase Price', required: true, example: '50000' },
+    { key: 'buyingWeight', label: 'Buying Weight (kg)', required: false, example: '35' },
+    { key: 'weight', label: 'Current Weight (kg)', required: true, example: '35' },
     { key: 'weightDate', label: 'Weight Date', required: false, example: '2025-01-15' },
     { key: 'notes', label: 'Notes', required: false, example: 'Healthy animal' }
   ];
@@ -154,6 +156,10 @@ const BulkUpload = () => {
       ['Date Format: YYYY-MM-DD (e.g., 2025-01-15)'],
       ['Price & Weight: Numbers only (no currency symbols)'],
       [''],
+      ['Weight Fields:'],
+      ['- Buying Weight: Initial weight at purchase (used for price/kg calculation)'],
+      ['- Current Weight: Present weight of the animal'],
+      [''],
       ['Important:'],
       ['- Tag ID must be unique (not already in the system)'],
       ['- Each Tag ID can only appear once in the upload file']
@@ -185,7 +191,8 @@ const BulkUpload = () => {
       breedType: 'Breed Type',
       sex: 'Sex',
       purchasePrice: 'Purchase Price',
-      weight: 'Weight',
+      buyingWeight: 'Buying Weight',
+      weight: 'Current Weight',
       arrivalDate: 'Arrival Date',
       birthDate: 'Birth Date',
       weightDate: 'Weight Date',
@@ -248,14 +255,38 @@ const BulkUpload = () => {
     }
 
     // Validate numbers
+    if (row.purchasePrice) {
+      const price = parseFloat(row.purchasePrice);
+      if (isNaN(price)) {
+        rowErrors.push(`Purchase Price "${row.purchasePrice}" is not a valid number`);
+      } else if (price <= 0) {
+        rowErrors.push('Purchase Price must be greater than 0');
+      } else {
+        validatedData.purchasePrice = price;
+      }
+    }
+
+    if (row.buyingWeight) {
+      const buyingWeight = parseFloat(row.buyingWeight);
+      if (isNaN(buyingWeight)) {
+        rowErrors.push(`Buying Weight "${row.buyingWeight}" is not a valid number`);
+      } else if (buyingWeight <= 0) {
+        rowErrors.push('Buying Weight must be greater than 0');
+      } else if (buyingWeight > 500) {
+        rowErrors.push('Buying Weight seems too high (max 500 kg)');
+      } else {
+        validatedData.buyingWeight = buyingWeight;
+      }
+    }
+
     if (row.weight) {
       const weight = parseFloat(row.weight);
       if (isNaN(weight)) {
-        rowErrors.push(`Weight "${row.weight}" is not a valid number`);
+        rowErrors.push(`Current Weight "${row.weight}" is not a valid number`);
       } else if (weight <= 0) {
-        rowErrors.push('Weight must be greater than 0');
+        rowErrors.push('Current Weight must be greater than 0');
       } else if (weight > 500) {
-        rowErrors.push('Weight seems too high (max 500 kg)');
+        rowErrors.push('Current Weight seems too high (max 500 kg)');
       } else {
         validatedData.weight = weight;
       }

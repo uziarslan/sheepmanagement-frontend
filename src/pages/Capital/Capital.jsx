@@ -37,14 +37,18 @@ const Capital = () => {
   const getId = (item) => item?._id ?? item?.id;
 
   const transactionTypes = [
-    { value: 'Investment', label: 'Add Investment' },
+    { value: 'Additional Investment', label: 'Additional Investment' },
     { value: 'Animal Purchase', label: 'Animal Purchase (Deduction)' },
     { value: 'Stock Purchase', label: 'Stock Purchase (Deduction)' },
     { value: 'Salaries', label: 'Salaries (Deduction)' },
     { value: 'Infrastructure', label: 'Infrastructure (Deduction)' },
-    { value: 'Sale Revenue', label: 'Sale Revenue (Addition)' },
+    { value: 'Animal Sale', label: 'Animal Sale (Addition)' },
     { value: 'Other Expense', label: 'Other Expense (Deduction)' },
-    { value: 'Other Income', label: 'Other Income (Addition)' }
+    { value: 'Other Income', label: 'Other Income (Addition)' },
+    { value: 'Maintenance', label: 'Maintenance (Deduction)' },
+    { value: 'Utilities', label: 'Utilities (Deduction)' },
+    { value: 'Transportation', label: 'Transportation (Deduction)' },
+    { value: 'Veterinary', label: 'Veterinary (Deduction)' }
   ];
 
   useEffect(() => {
@@ -98,7 +102,7 @@ const Capital = () => {
         toast.success('Initial capital set successfully');
       } else {
         // Determine if it's an addition or deduction
-        const isAddition = ['Investment', 'Sale Revenue', 'Other Income'].includes(formData.type);
+        const isAddition = ['Additional Investment', 'Animal Sale', 'Other Income'].includes(formData.type);
         const amount = isAddition ? parseFloat(formData.amount) : -parseFloat(formData.amount);
         
         await capitalAPI.update(amount, formData.type, formData.description);
@@ -343,12 +347,12 @@ const Capital = () => {
 
           {modalType === 'add' && formData.type && (
             <div className={`p-3 rounded-lg ${
-              ['Investment', 'Sale Revenue', 'Other Income'].includes(formData.type)
+              ['Additional Investment', 'Animal Sale', 'Other Income'].includes(formData.type)
                 ? 'bg-green-50 text-green-800'
                 : 'bg-red-50 text-red-800'
             }`}>
               <p className="text-sm font-medium">
-                {['Investment', 'Sale Revenue', 'Other Income'].includes(formData.type)
+                {['Additional Investment', 'Animal Sale', 'Other Income'].includes(formData.type)
                   ? '↑ This will ADD to your available balance'
                   : '↓ This will DEDUCT from your available balance'
                 }

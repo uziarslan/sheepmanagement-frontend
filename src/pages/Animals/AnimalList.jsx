@@ -7,13 +7,15 @@ import {
   HiOutlinePencil,
   HiOutlineTrash,
   HiOutlineFilter,
+  HiOutlineDocumentDownload,
   HiOutlineExclamationCircle,
   HiOutlineShoppingCart
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
 import { useAuth } from '../../Context/AuthContext';
 import { animalAPI, penAPI } from '../../services/mockApi';
-import { formatCurrency, getStatusColor, filterBySearch } from '../../utils/helpers';
+import { formatCurrency, getStatusColor } from '../../utils/helpers';
+import * as XLSX from 'xlsx';
 import {
   PageHeader,
   Card,
@@ -40,6 +42,9 @@ const AnimalList = () => {
   const [animals, setAnimals] = useState([]);
   const [pens, setPens] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({
     type: '',
@@ -53,15 +58,35 @@ const AnimalList = () => {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchData = async () => {
+  const fetchData = async (overrides = {}) => {
     try {
+      setLoading(true);
+
+      const params = {
+        page,
+        limit,
+        sort: 'tagId',
+        ...overrides
+      };
+      // fall back to current state if not overridden
+      if (params.status === undefined && filters.status) params.status = filters.status;
+      if (params.animalType === undefined && filters.type) params.animalType = filters.type;
+      if (params.breedType === undefined && filters.breed) params.breedType = filters.breed;
+      if (params.pen === undefined && filters.penId) params.pen = filters.penId;
+      if (params.search === undefined && search) params.search = search;
+
       const [animalsRes, pensRes] = await Promise.all([
-        animalAPI.getAll(),
-        penAPI.getAll()
+        animalAPI.getAll(params),
+        penAPI.getAll({ limit: 100 })
       ]);
-      if (animalsRes.success) setAnimals(animalsRes.data);
+
+      if (animalsRes.success) {
+        setAnimals(animalsRes.data || []);
+        setTotal(animalsRes.meta?.total || 0);
+      }
       if (pensRes.success) setPens(pensRes.data);
     } catch (error) {
       toast.error('Failed to fetch animals');
@@ -77,8 +102,9 @@ const AnimalList = () => {
     try {
       await animalAPI.delete(deleteModal.animal.id);
       toast.success('Animal deleted successfully');
-      setAnimals(prev => prev.filter(a => a.id !== deleteModal.animal.id));
       setDeleteModal({ open: false, animal: null });
+      // refresh current page
+      fetchData();
     } catch (error) {
       toast.error(error.message || 'Failed to delete animal');
     } finally {
@@ -88,15 +114,103 @@ const AnimalList = () => {
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    setFilters(prev => ({ ...prev, [name]: value }));
+    const newFilters = { ...filters, [name]: value };
+    setFilters(newFilters);
+    setPage(1);
+    const overrides = {};
+    if (newFilters.status) overrides.status = newFilters.status;
+    if (newFilters.type) overrides.animalType = newFilters.type;
+    if (newFilters.breed) overrides.breedType = newFilters.breed;
+    if (newFilters.penId) overrides.pen = newFilters.penId;
+    if (search) overrides.search = search;
+    fetchData({ ...overrides, page: 1 });
   };
 
   const clearFilters = () => {
     setFilters({ type: '', breed: '', status: '', penId: '' });
     setSearch('');
+    setPage(1);
+    fetchData({ page: 1, search: '', status: undefined, animalType: undefined, breedType: undefined, pen: undefined });
   };
 
+  const handleSearchChange = (value) => {
+    setSearch(value);
+    setPage(1);
+    // Debounced fetch happens in effect below
+  };
+
+  // Debounce search input to avoid calling API on every keystroke
+  useEffect(() => {
+    const delay = 500; // ms
+    const timer = setTimeout(() => {
+      fetchData({ page: 1 });
+    }, delay);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
   const getId = (item) => item?._id ?? item?.id;
+
+  const exportToExcel = async () => {
+    // Fetch all animals page-by-page using current filters/search
+    const fetchAllPages = async (fetchFn, { limit = 100, maxPages = 50 } = {}) => {
+      const all = [];
+      for (let page = 1; page <= maxPages; page++) {
+        const res = await fetchFn({ page, limit });
+        if (!res?.success) throw new Error(res?.message || 'Request failed');
+        const chunk = Array.isArray(res.data) ? res.data : [];
+        all.push(...chunk);
+        if (chunk.length < limit) break;
+      }
+      return all;
+    };
+
+    try {
+      const baseParams = {
+        sort: 'tagId',
+        ...(filters.status ? { status: filters.status } : {}),
+        ...(filters.type ? { animalType: filters.type } : {}),
+        ...(filters.breed ? { breedType: filters.breed } : {}),
+        ...(filters.penId ? { pen: filters.penId } : {}),
+        ...(search ? { search } : {})
+      };
+
+      const animalsAll = await fetchAllPages((p) => animalAPI.getAll({ ...p, ...baseParams }), { limit: 100, maxPages: 50 });
+
+      if (!animalsAll || animalsAll.length === 0) {
+        toast.error('No animals to export (check your filters)');
+        return;
+      }
+
+      const headers = ['Tag ID', 'Name', 'Pen', 'Sex', 'Breed', 'Purchase Price', 'Buying Weight (kg)', 'Current Weight (kg)', 'Status', 'Added Date'];
+      const aoa = [headers];
+
+      for (const a of animalsAll) {
+        aoa.push([
+          a.tagId || '',
+          a.name || '',
+          getAnimalPenName(a),
+          a.sex || '',
+          a.breedType || '',
+          a.purchasePrice != null ? Number(a.purchasePrice) : '',
+          a.buyingWeight != null ? Number(a.buyingWeight) : '',
+          a.weight != null ? Number(a.weight) : '',
+          a.status || '',
+          a.createdAt ? new Date(a.createdAt).toLocaleDateString() : ''
+        ]);
+      }
+
+      const sheet = XLSX.utils.aoa_to_sheet(aoa);
+      sheet['!cols'] = aoa[0].map(() => ({ wch: 18 }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, sheet, 'Animals');
+      XLSX.writeFile(wb, `animals_${new Date().toISOString().slice(0,10)}.xlsx`);
+      toast.success(`Exported ${animalsAll.length} animals`);
+    } catch (err) {
+      console.error('Export failed', err);
+      toast.error(err.message || 'Failed to export animals');
+    }
+  };
 
   const getAnimalPenId = (animal) => {
     const pen = animal?.pen ?? animal?.penId;
@@ -121,21 +235,8 @@ const AnimalList = () => {
     return foundPen ? foundPen.name : '-';
   };
 
-  // Filter animals
-  let filteredAnimals = filterBySearch(animals, search, ['tagId', 'name', 'breedType']);
-  
-  if (filters.type) {
-    filteredAnimals = filteredAnimals.filter(a => a.animalType === filters.type);
-  }
-  if (filters.breed) {
-    filteredAnimals = filteredAnimals.filter(a => a.breedType === filters.breed);
-  }
-  if (filters.status) {
-    filteredAnimals = filteredAnimals.filter(a => a.status === filters.status);
-  }
-  if (filters.penId) {
-    filteredAnimals = filteredAnimals.filter(a => String(getAnimalPenId(a)) === String(filters.penId));
-  }
+  // Client-side filtering is replaced by server-side pagination/filters
+  const filteredAnimals = animals;
 
   if (loading) {
     return <PageLoader />;
@@ -145,10 +246,13 @@ const AnimalList = () => {
     <div className="space-y-6">
       <PageHeader
         title="Animals"
-        subtitle={`${animals.length} total animals registered`}
+        subtitle={`${total} total animals registered`}
         breadcrumbs={[{ label: 'Animals' }]}
         action={
           <div className="flex space-x-3">
+            <Button variant="outline" icon={HiOutlineDocumentDownload} onClick={exportToExcel}>
+              Export Excel
+            </Button>
             {isAdmin && (
               <Link to="/dashboard/animals/sell">
                 <Button variant="outline" icon={HiOutlineShoppingCart} className="border-emerald-200 text-emerald-600 hover:bg-emerald-50">
@@ -175,7 +279,7 @@ const AnimalList = () => {
             <div className="flex-1">
               <SearchInput
                 value={search}
-                onChange={setSearch}
+                onChange={handleSearchChange}
                 placeholder="Search by Tag ID, Name, or Breed..."
               />
             </div>
@@ -233,12 +337,14 @@ const AnimalList = () => {
           <TableHead>
             <TableHeader>Animal</TableHeader>
             <TableHeader>Tag ID</TableHeader>
+            <TableHeader>Added Date</TableHeader>
             <TableHeader>Type / Breed</TableHeader>
             <TableHeader>Sex</TableHeader>
-            <TableHeader>Weight</TableHeader>
+            <TableHeader>Buying Weight</TableHeader>
             <TableHeader>Pen</TableHeader>
             <TableHeader>Price</TableHeader>
             <TableHeader>Price/Kg</TableHeader>
+            <TableHeader>Current Weight</TableHeader>
             <TableHeader>Cost</TableHeader>
             <TableHeader>Total Price</TableHeader>
             <TableHeader>Total Price/Kg</TableHeader>
@@ -252,7 +358,7 @@ const AnimalList = () => {
                   ? "No animals match your search criteria" 
                   : "No animals registered yet"
                 }
-                colSpan={13}
+                colSpan={15}
               />
             ) : (
               filteredAnimals.map((animal) => (
@@ -271,6 +377,11 @@ const AnimalList = () => {
                     </span>
                   </TableCell>
                   <TableCell>
+                    <span className="text-sm text-gray-600">
+                      {animal.createdAt ? new Date(animal.createdAt).toLocaleDateString() : '-'}
+                    </span>
+                  </TableCell>
+                  <TableCell>
                     <div>
                       <p className="font-medium">{animal.animalType}</p>
                       <p className="text-sm text-gray-500">{animal.breedType}</p>
@@ -281,7 +392,9 @@ const AnimalList = () => {
                       {animal.sex}
                     </Badge>
                   </TableCell>
-                  <TableCell>{animal.weight} kg</TableCell>
+                  <TableCell>
+                    <span className="font-medium">{animal.buyingWeight ? `${animal.buyingWeight} kg` : '-'}</span>
+                  </TableCell>
                   <TableCell>
                     <span className="text-sm">{getAnimalPenName(animal)}</span>
                   </TableCell>
@@ -290,11 +403,14 @@ const AnimalList = () => {
                   </TableCell>
                   <TableCell>
                     <span className="font-medium text-emerald-600">
-                      {animal.weight > 0 
-                        ? formatCurrency(animal.purchasePrice / animal.weight) 
+                      {animal.buyingWeight > 0
+                        ? formatCurrency(animal.purchasePrice / animal.buyingWeight)
                         : '-'
                       }
                     </span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-medium">{animal.weight} kg</span>
                   </TableCell>
                   <TableCell>
                     <span className="font-medium text-orange-600">
@@ -350,12 +466,56 @@ const AnimalList = () => {
           </TableBody>
         </Table>
 
-        {/* Results count */}
-        {filteredAnimals.length > 0 && (
-          <div className="mt-4 text-sm text-gray-500">
-            Showing {filteredAnimals.length} of {animals.length} animals
+        {/* Pagination controls */}
+        <div className="mt-4 flex items-center justify-between">
+          <div className="text-sm text-gray-500">
+            Showing {( (page - 1) * limit) + 1} to {Math.min(page * limit, total)} of {total} animals
           </div>
-        )}
+          <div className="flex items-center space-x-2">
+            <Select
+              name="limit"
+              value={limit}
+              onChange={(e) => {
+                const newLimit = Number(e.target.value) || 10;
+                setLimit(newLimit);
+                setPage(1);
+                fetchData({ limit: newLimit, page: 1 });
+              }}
+              options={[{ value: 10, label: '10' }, { value: 25, label: '25' }, { value: 50, label: '50' }]}
+              placeholder="Per page"
+            />
+            <div className="flex items-center space-x-1">
+              <Button
+                variant="outline"
+                disabled={page <= 1}
+                onClick={() => {
+                  if (page > 1) {
+                    const newPage = page - 1;
+                    setPage(newPage);
+                    fetchData({ page: newPage, limit });
+                  }
+                }}
+              >
+                Prev
+              </Button>
+              <div className="px-2 text-sm">Page {page} of {Math.max(1, Math.ceil(total / limit))}</div>
+              <Button
+                variant="outline"
+                disabled={page >= Math.ceil(total / limit)}
+                onClick={() => {
+                  const lastPage = Math.max(1, Math.ceil(total / limit));
+                  if (page < lastPage) {
+                    const newPage = page + 1;
+                    setPage(newPage);
+                    fetchData({ page: newPage, limit });
+                  }
+                }}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        </div>
       </Card>
 
       {/* Delete Confirmation */}

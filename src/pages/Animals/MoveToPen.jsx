@@ -45,15 +45,31 @@ const MoveToPen = () => {
   }, []);
 
   const fetchData = async () => {
+    const fetchAllPages = async (fetchFn, { limit = 100, maxPages = 50 } = {}) => {
+      const all = [];
+      for (let page = 1; page <= maxPages; page++) {
+        const res = await fetchFn({ page, limit });
+        if (!res?.success) {
+          throw new Error(res?.message || 'Request failed');
+        }
+        const chunk = Array.isArray(res.data) ? res.data : [];
+        all.push(...chunk);
+        if (chunk.length < limit) break;
+      }
+      return all;
+    };
+
     try {
-      // Request all pens (limit 100 = backend max) so Total Capacity / Available Spots use actual DB values
-      const [animalsRes, pensRes] = await Promise.all([
-        animalAPI.getAll(),
-        penAPI.getAll({ limit: 100 })
+      // Fetch all animals and pens page-by-page to avoid backend limit per-request
+      const [animalsAll, pensAll] = await Promise.all([
+        fetchAllPages((p) => animalAPI.getAll({ ...p, status: 'Active', sort: 'tagId' }), { limit: 100, maxPages: 50 }),
+        fetchAllPages((p) => penAPI.getAll({ ...p, sort: 'name' }), { limit: 100, maxPages: 20 })
       ]);
-      if (animalsRes.success) setAnimals(animalsRes.data.filter(a => a.status === 'Active'));
-      if (pensRes.success) setPens(pensRes.data);
+
+      setAnimals((animalsAll || []).filter(a => a.status === 'Active'));
+      setPens(pensAll || []);
     } catch (error) {
+      console.error('fetchData failed', error);
       toast.error('Failed to fetch data');
     } finally {
       setLoading(false);

@@ -8,6 +8,7 @@ import {
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
 import { animalAPI, penAPI, stockAPI, employeeAPI, healthAPI } from '../../services/mockApi';
+import { groupStocksByNameAndRate, deductStockFifo } from '../../utils/stockUtils';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
   PageHeader,
@@ -90,7 +91,10 @@ const Deworming = () => {
       
       if (animalsRes.success) setAnimals(animalsRes.data.filter(a => a.status === 'Active'));
       if (pensRes.success) setPens(pensRes.data);
-      if (stocksRes.success) setMedicines(stocksRes.data.filter(s => s.category === 'Medication'));
+      if (stocksRes.success) {
+        const meds = stocksRes.data.filter(s => s.category === 'Medication');
+        setMedicines(groupStocksByNameAndRate(meds));
+      }
       if (employeesRes.success) setEmployees(employeesRes.data.filter(e => e.status === 'Active'));
       if (dewormingsRes.success) setDewormings(dewormingsRes.data);
     } catch (error) {
@@ -141,7 +145,8 @@ const Deworming = () => {
       unit: medicine.unit,
       rate: medicine.openingRatePerUnit || 0,
       quantity: qty,
-      total: qty * (medicine.openingRatePerUnit || 0)
+      total: qty * (medicine.openingRatePerUnit || 0),
+      _stockItem: medicine  // keep for FIFO deduction
     };
 
     setFormData(prev => ({
@@ -234,6 +239,20 @@ const Deworming = () => {
       if (response.success) {
         toast.success(`Deworming recorded for ${formData.animalIds.length} animal(s)`);
         setDewormings(prev => [response.data, ...prev]);
+
+        // FIFO stock deduction
+        try {
+          await Promise.all(
+            formData.medicines.map(m =>
+              m._stockItem
+                ? deductStockFifo(stockAPI, m._stockItem, m.quantity, 'Deworming')
+                : Promise.resolve()
+            )
+          );
+        } catch (deductErr) {
+          console.error('Stock deduction failed:', deductErr);
+        }
+
         closeModal();
       }
     } catch (error) {

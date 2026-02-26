@@ -43,6 +43,7 @@ const AnimalForm = () => {
     arrivalDate: '',
     birthDate: '',
     purchasePrice: '',
+    buyingWeight: '',
     weight: '',
     weightDate: '',
     penId: '',
@@ -123,6 +124,13 @@ const AnimalForm = () => {
     if (!formData.purchasePrice || parseFloat(formData.purchasePrice) <= 0) {
       newErrors.purchasePrice = 'Please enter a valid purchase price';
     }
+    // Buying weight is required for new animals, optional for editing existing ones
+    if (!isEdit && (!formData.buyingWeight || parseFloat(formData.buyingWeight) <= 0)) {
+      newErrors.buyingWeight = 'Please enter a valid buying weight';
+    }
+    if (formData.buyingWeight && parseFloat(formData.buyingWeight) <= 0) {
+      newErrors.buyingWeight = 'Buying weight must be greater than 0';
+    }
     if (!formData.weight || parseFloat(formData.weight) <= 0) {
       newErrors.weight = 'Please enter a valid weight';
     }
@@ -164,6 +172,11 @@ const AnimalForm = () => {
         pedigreeInfo: Boolean(formData.pedigreeInfo),
         notes: formData.notes?.trim() || null
       };
+
+      // Include buyingWeight if provided
+      if (formData.buyingWeight && parseFloat(formData.buyingWeight) > 0) {
+        dataToSubmit.buyingWeight = parseFloat(formData.buyingWeight);
+      }
 
       if (isEdit) {
         await animalAPI.update(id, dataToSubmit);
@@ -354,12 +367,23 @@ const AnimalForm = () => {
             
             <div className="space-y-4">
               <Input
-                label="Weight"
+                label="Buying Weight (at purchase)"
+                type="number"
+                name="buyingWeight"
+                value={formData.buyingWeight}
+                onChange={handleChange}
+                placeholder="Enter buying weight"
+                suffix="kg"
+                error={errors.buyingWeight}
+                required={!isEdit}
+              />
+              <Input
+                label="Current Weight"
                 type="number"
                 name="weight"
                 value={formData.weight}
                 onChange={handleChange}
-                placeholder="Enter weight"
+                placeholder="Enter current weight"
                 suffix="kg"
                 error={errors.weight}
                 required

@@ -502,15 +502,35 @@ const BodyWeight = () => {
     let fail = 0;
     const failures = [];
 
-    for (const item of importPreview) {
-      try {
-        const payload = {
-          animal: item.animalId,
-          date: item.date,
-          weight: item.weight
-        };
-        const res = await healthAPI.createWeightRecord(payload);
-        if (res?.success) {
+    const chunkSize = 25; // number of concurrent requests per batch
+    const pauseMs = 300; // pause between batches to avoid rate limits
+
+    const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+
+    for (let i = 0; i < importPreview.length; i += chunkSize) {
+      const chunk = importPreview.slice(i, i + chunkSize);
+      // Launch chunk in parallel
+      const results = await Promise.all(chunk.map(async (item) => {
+        try {
+          const payload = {
+            animal: item.animalId,
+            date: item.date,
+            weight: item.weight
+          };
+          const res = await healthAPI.createWeightRecord(payload);
+          return { item, res };
+        } catch (e) {
+          return { item, err: e };
+        }
+      }));
+
+      // Process results
+      for (const r of results) {
+        const { item, res, err } = r;
+        if (err) {
+          fail++;
+          failures.push(`${item.tagId} (${item.date}): ${err.message || 'Failed'}`);
+        } else if (res?.success) {
           ok++;
           setWeightRecords(prev => [res.data, ...prev]);
           setAnimals(prev => prev.map(a => (String(getId(a)) === item.animalId ? { ...a, weight: item.weight, weightDate: item.date } : a)));
@@ -518,10 +538,10 @@ const BodyWeight = () => {
           fail++;
           failures.push(`${item.tagId} (${item.date}): ${res?.message || 'Failed'}`);
         }
-      } catch (e) {
-        fail++;
-        failures.push(`${item.tagId} (${item.date}): ${e?.message || 'Failed'}`);
       }
+
+      // brief pause between batches
+      if (i + chunkSize < importPreview.length) await sleep(pauseMs);
     }
 
     setImporting(false);

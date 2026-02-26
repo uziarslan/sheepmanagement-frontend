@@ -8,6 +8,7 @@ import {
   HiOutlineShieldCheck
 } from 'react-icons/hi';
 import { stockAPI, vaccinationAPI } from '../../services/mockApi';
+import { groupStocksByNameAndRate } from '../../utils/stockUtils';
 import { formatCurrency } from '../../utils/helpers';
 import {
   PageHeader,
@@ -50,7 +51,8 @@ const CreateVaccine = () => {
       const stocksRes = await stockAPI.getAll();
       
       if (stocksRes.success) {
-        setMedications(stocksRes.data.filter(s => s.category === 'Medication'));
+        const meds = stocksRes.data.filter(s => s.category === 'Medication');
+        setMedications(groupStocksByNameAndRate(meds));
       }
 
       if (isEdit) {

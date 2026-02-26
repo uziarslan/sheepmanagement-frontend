@@ -8,6 +8,7 @@ import {
   HiOutlineBeaker
 } from 'react-icons/hi';
 import { penAPI, stockAPI, feedAPI } from '../../services/mockApi';
+import { groupStocksByNameAndRate } from '../../utils/stockUtils';
 import { formatCurrency } from '../../utils/helpers';
 import {
   PageHeader,
@@ -60,8 +61,8 @@ const FeedRecipeForm = () => {
       
       if (pensRes.success) setPens(pensRes.data);
       if (stocksRes.success) {
-        // Filter only feed items
-        setFeedItems(stocksRes.data.filter(s => s.category === 'Feeding'));
+        const feeds = stocksRes.data.filter(s => s.category === 'Feeding');
+        setFeedItems(groupStocksByNameAndRate(feeds));
       }
 
       if (isEdit) {

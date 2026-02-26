@@ -103,8 +103,15 @@ const StockCategoryBulkUpload = ({
       }
     }
 
+    const parseNumber = (val) => {
+      if (val === null || val === undefined) return NaN;
+      // Remove common thousand separators, spaces and currency symbols
+      const s = String(val).replace(/[,\s\u00A0\u202F]/g, '').replace(/[^0-9.\-]/g, '');
+      return s === '' ? NaN : parseFloat(s);
+    };
+
     if (row.packQuantity) {
-      const qty = parseFloat(row.packQuantity);
+      const qty = parseNumber(row.packQuantity);
       if (isNaN(qty) || qty <= 0) {
         rowErrors.push('Quantity must be a valid number greater than 0');
       } else {
@@ -113,7 +120,7 @@ const StockCategoryBulkUpload = ({
     }
 
     if (showUnitSize && row.unitSize) {
-      const unitSizeVal = parseFloat(row.unitSize);
+      const unitSizeVal = parseNumber(row.unitSize);
       if (isNaN(unitSizeVal) || unitSizeVal <= 0) {
         rowErrors.push(`${unitLabel} must be a valid number greater than 0`);
       } else {
@@ -122,7 +129,7 @@ const StockCategoryBulkUpload = ({
     }
 
     if (row.totalPrice) {
-      const price = parseFloat(row.totalPrice);
+      const price = parseNumber(row.totalPrice);
       if (isNaN(price) || price <= 0) {
         rowErrors.push('Total Price must be a valid number greater than 0');
       } else {

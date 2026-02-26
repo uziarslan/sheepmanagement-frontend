@@ -287,7 +287,7 @@ const ApplyVaccine = () => {
                   >
                     {animals.map(animal => (
                       <option key={getId(animal)} value={getId(animal)}>
-                        {animal.tagNumber} - {animal.name || 'Unnamed'}
+                        {animal.tagId}
                       </option>
                     ))}
                   </Select>
@@ -322,8 +322,7 @@ const ApplyVaccine = () => {
                             onChange={() => handleAnimalSelection(getId(animal))}
                             className="mr-3"
                           />
-                          <span className="font-medium">{animal.tagNumber}</span>
-                          <span className="text-gray-500 ml-2">- {animal.name || 'Unnamed'}</span>
+                              <span className="font-medium">{animal.tagId}</span>
                         </label>
                       ))
                     )}
