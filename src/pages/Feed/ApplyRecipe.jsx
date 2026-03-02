@@ -37,7 +37,10 @@ const ApplyRecipe = () => {
   const [formData, setFormData] = useState({
     recipeId: preSelectedRecipeId || '',
     penId: '',
+    applyMode: 'single', // 'single' | 'range'
     date: new Date().toISOString().split('T')[0],
+    dateStart: new Date().toISOString().split('T')[0],
+    dateEnd: new Date().toISOString().split('T')[0],
     notes: ''
   });
 
@@ -97,15 +100,40 @@ const ApplyRecipe = () => {
     if (!formData.penId) {
       newErrors.penId = 'Please select a shed/pen';
     }
-    if (!formData.date) {
-      newErrors.date = 'Date is required';
+    if (formData.applyMode === 'single') {
+      if (!formData.date) newErrors.date = 'Date is required';
+    } else {
+      if (!formData.dateStart) newErrors.dateStart = 'Start date is required';
+      if (!formData.dateEnd) newErrors.dateEnd = 'End date is required';
+      if (formData.dateStart && formData.dateEnd && formData.dateStart > formData.dateEnd) {
+        newErrors.dateEnd = 'End date must be on or after start date';
+      }
+      if (formData.dateStart && formData.dateEnd) {
+        const start = new Date(formData.dateStart);
+        const end = new Date(formData.dateEnd);
+        const days = Math.ceil((end - start) / (24 * 60 * 60 * 1000)) + 1;
+        if (days > 90) {
+          newErrors.dateEnd = 'Date range cannot exceed 90 days';
+        }
+      }
     }
 
-    // Check stock availability
+    // Check stock availability (for range, need stock × number of days)
     if (selectedRecipe) {
-      const insufficientStock = selectedRecipe.ingredients.filter(ing => ing.quantity > ing.currentStock);
+      let multiplier = 1;
+      if (formData.applyMode === 'range' && formData.dateStart && formData.dateEnd) {
+        const start = new Date(formData.dateStart);
+        const end = new Date(formData.dateEnd);
+        multiplier = Math.ceil((end - start) / (24 * 60 * 60 * 1000)) + 1;
+      }
+      const insufficientStock = selectedRecipe.ingredients.filter(
+        ing => (ing.quantity * multiplier) > (ing.currentStock || 0)
+      );
       if (insufficientStock.length > 0) {
-        newErrors.stock = `Insufficient stock for: ${insufficientStock.map(i => i.name).join(', ')}`;
+        const msg = multiplier > 1
+          ? `Insufficient stock for ${multiplier} days: ${insufficientStock.map(i => i.name).join(', ')}`
+          : `Insufficient stock for: ${insufficientStock.map(i => i.name).join(', ')}`;
+        newErrors.stock = msg;
       }
     }
 
@@ -113,38 +141,87 @@ const ApplyRecipe = () => {
     return Object.keys(newErrors).length === 0;
   };
 
+  const getDatesToApply = () => {
+    if (formData.applyMode === 'single') {
+      return [formData.date];
+    }
+    const dates = [];
+    const start = new Date(formData.dateStart);
+    const end = new Date(formData.dateEnd);
+    const current = new Date(start);
+    while (current <= end) {
+      dates.push(current.toISOString().split('T')[0]);
+      current.setDate(current.getDate() + 1);
+    }
+    return dates;
+  };
+
   const handleApply = async (e) => {
     e.preventDefault();
     if (!validate()) return;
 
+    const datesToApply = getDatesToApply();
+    const recipeIdKey = String(formData.recipeId).trim();
+    const penIdKey = String(formData.penId).trim();
+    const pen = pens.find(p => String(getId(p)) === String(penIdKey));
+
     setApplying(true);
     try {
-      const recipeIdKey = String(formData.recipeId).trim();
-      const penIdKey = String(formData.penId).trim();
-      const pen = pens.find(p => String(getId(p)) === String(penIdKey));
+      const successApps = [];
+      const failedDates = [];
 
-      // Send recipe + pen to backend — the backend owns FIFO validation & deduction
-      const applicationData = {
-        recipe: recipeIdKey,
-        pen: penIdKey,
-        date: formData.date,
-        notes: formData.notes || null
-      };
+      for (const date of datesToApply) {
+        try {
+          const applicationData = {
+            recipe: recipeIdKey,
+            pen: penIdKey,
+            date,
+            notes: formData.notes || null
+          };
+          const response = await feedAPI.applyRecipe(applicationData);
+          if (response.success) {
+            successApps.push(response.data);
+          } else {
+            failedDates.push({ date, error: response.message || 'Unknown error' });
+          }
+        } catch (err) {
+          failedDates.push({ date, error: err.message || 'Failed' });
+        }
+      }
 
-      const response = await feedAPI.applyRecipe(applicationData);
-      
-      if (response.success) {
-        toast.success(`Recipe applied to ${pen?.name || 'shed'} successfully`);
-        setApplications(prev => [response.data, ...prev]);
-        
+      if (successApps.length > 0) {
+        setApplications(prev => [...successApps, ...prev]);
+        if (datesToApply.length > 1) {
+          await fetchData(); // Refresh to get full list with proper ordering
+        }
+        const penName = pen?.name || 'shed';
+        if (successApps.length === datesToApply.length) {
+          toast.success(
+            datesToApply.length === 1
+              ? `Recipe applied to ${penName} successfully`
+              : `Recipe applied to ${penName} for ${successApps.length} days successfully`
+          );
+        } else {
+          toast.success(
+            `Recipe applied for ${successApps.length} of ${datesToApply.length} days. ${failedDates.length} failed.`
+          );
+          failedDates.forEach(({ date, error }) => toast.error(`${date}: ${error}`));
+        }
+
         // Reset form
-        setFormData({
+        const today = new Date().toISOString().split('T')[0];
+        setFormData(prev => ({
+          ...prev,
           recipeId: '',
           penId: '',
-          date: new Date().toISOString().split('T')[0],
+          date: today,
+          dateStart: today,
+          dateEnd: today,
           notes: ''
-        });
+        }));
         setSelectedRecipe(null);
+      } else {
+        toast.error(failedDates[0]?.error || 'Failed to apply recipe');
       }
     } catch (error) {
       toast.error(error.message || 'Failed to apply recipe');
@@ -214,15 +291,75 @@ const ApplyRecipe = () => {
               />
             </div>
 
-            <Input
-              label="Application Date"
-              type="date"
-              name="date"
-              value={formData.date}
-              onChange={handleChange}
-              error={errors.date}
-              required
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Apply for</label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="applyMode"
+                    value="single"
+                    checked={formData.applyMode === 'single'}
+                    onChange={handleChange}
+                    className="text-emerald-600 border-gray-300 focus:ring-emerald-500"
+                  />
+                  <span className="text-sm">Single Day</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="applyMode"
+                    value="range"
+                    checked={formData.applyMode === 'range'}
+                    onChange={handleChange}
+                    className="text-emerald-600 border-gray-300 focus:ring-emerald-500"
+                  />
+                  <span className="text-sm">Date Range</span>
+                </label>
+              </div>
+            </div>
+
+            {formData.applyMode === 'single' ? (
+              <Input
+                label="Application Date"
+                type="date"
+                name="date"
+                value={formData.date}
+                onChange={handleChange}
+                error={errors.date}
+                required
+              />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input
+                  label="Start Date"
+                  type="date"
+                  name="dateStart"
+                  value={formData.dateStart}
+                  onChange={handleChange}
+                  error={errors.dateStart}
+                  required
+                />
+                <Input
+                  label="End Date"
+                  type="date"
+                  name="dateEnd"
+                  value={formData.dateEnd}
+                  onChange={handleChange}
+                  error={errors.dateEnd}
+                  required
+                />
+                {formData.dateStart && formData.dateEnd && formData.dateStart <= formData.dateEnd && (
+                  <p className="sm:col-span-2 text-sm text-gray-500">
+                    Will apply recipe for{' '}
+                    <strong>
+                      {Math.ceil((new Date(formData.dateEnd) - new Date(formData.dateStart)) / (24 * 60 * 60 * 1000)) + 1}
+                    </strong>{' '}
+                    days
+                  </p>
+                )}
+              </div>
+            )}
 
             <Textarea
               label="Notes (Optional)"
@@ -240,56 +377,87 @@ const ApplyRecipe = () => {
             )}
 
             {/* Recipe Preview */}
-            {selectedRecipe && (
-              <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-                <h4 className="font-semibold text-amber-800 mb-3">Recipe: {selectedRecipe.name}</h4>
-                <div className="space-y-2">
-                  {selectedRecipe.ingredients.map((ing, i) => (
-                    <div key={i} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <HiOutlineBeaker className="w-4 h-4 text-amber-600" />
-                        <span>{ing.name}</span>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className="text-gray-600">{ing.quantity} {ing.unit}</span>
-                        <span className={`font-medium ${ing.quantity > ing.currentStock ? 'text-red-600' : 'text-emerald-600'}`}>
-                          {formatCurrency(ing.total)}
-                        </span>
-                        {ing.quantity > ing.currentStock && (
-                          <Badge variant="danger" className="text-xs">Low Stock</Badge>
-                        )}
-                      </div>
+            {selectedRecipe && (() => {
+              const dayCount = formData.applyMode === 'range' && formData.dateStart && formData.dateEnd && formData.dateStart <= formData.dateEnd
+                ? Math.ceil((new Date(formData.dateEnd) - new Date(formData.dateStart)) / (24 * 60 * 60 * 1000)) + 1
+                : 1;
+              const multiplier = dayCount;
+              return (
+                <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                  <h4 className="font-semibold text-amber-800 mb-3">Recipe: {selectedRecipe.name}</h4>
+                  <div className="space-y-2">
+                    {selectedRecipe.ingredients.map((ing, i) => {
+                      const needQty = ing.quantity * multiplier;
+                      const hasStock = (ing.currentStock || 0) >= needQty;
+                      return (
+                        <div key={i} className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            <HiOutlineBeaker className="w-4 h-4 text-amber-600" />
+                            <span>{ing.name}</span>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className="text-gray-600">
+                              {multiplier > 1 ? `${ing.quantity} × ${multiplier} = ${needQty}` : ing.quantity} {ing.unit}
+                            </span>
+                            <span className={`font-medium ${!hasStock ? 'text-red-600' : 'text-emerald-600'}`}>
+                              {formatCurrency(ing.total * multiplier)}
+                            </span>
+                            {!hasStock && (
+                              <Badge variant="danger" className="text-xs">Low Stock</Badge>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="pt-2 mt-2 border-t border-amber-200 flex justify-between">
+                      <span className="font-semibold text-amber-800">
+                        Total{multiplier > 1 ? ` (${multiplier} days)` : ''}:
+                      </span>
+                      <span className="font-bold text-emerald-600">
+                        {formatCurrency(selectedRecipe.totalCost * multiplier)}
+                      </span>
                     </div>
-                  ))}
-                  <div className="pt-2 mt-2 border-t border-amber-200 flex justify-between">
-                    <span className="font-semibold text-amber-800">Total:</span>
-                    <span className="font-bold text-emerald-600">{formatCurrency(selectedRecipe.totalCost)}</span>
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Cost Allocation Preview */}
-            {selectedRecipe && selectedPen && (
-              <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-                <h4 className="font-semibold text-emerald-800 mb-3">Cost Allocation Preview</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-emerald-600">Animals in Shed</p>
-                    <p className="text-xl font-bold text-emerald-800">{selectedPen.animalCount}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-emerald-600">Cost per Animal</p>
-                    <p className="text-xl font-bold text-emerald-800">
-                      {formatCurrency(selectedPen.animalCount > 0 
-                        ? selectedRecipe.totalCost / selectedPen.animalCount 
-                        : 0
-                      )}
-                    </p>
+            {selectedRecipe && selectedPen && (() => {
+              const dayCount = formData.applyMode === 'range' && formData.dateStart && formData.dateEnd && formData.dateStart <= formData.dateEnd
+                ? Math.ceil((new Date(formData.dateEnd) - new Date(formData.dateStart)) / (24 * 60 * 60 * 1000)) + 1
+                : 1;
+              const totalCost = selectedRecipe.totalCost * dayCount;
+              const costPerAnimalPerDay = selectedPen.animalCount > 0 ? selectedRecipe.totalCost / selectedPen.animalCount : 0;
+              const costPerAnimalTotal = selectedPen.animalCount > 0 ? totalCost / selectedPen.animalCount : 0;
+              return (
+                <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
+                  <h4 className="font-semibold text-emerald-800 mb-3">Cost Allocation Preview</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-emerald-600">Animals in Shed</p>
+                      <p className="text-xl font-bold text-emerald-800">{selectedPen.animalCount}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-emerald-600">Cost per Animal (per day)</p>
+                      <p className="text-xl font-bold text-emerald-800">{formatCurrency(costPerAnimalPerDay)}</p>
+                    </div>
+                    {dayCount > 1 && (
+                      <>
+                        <div>
+                          <p className="text-sm text-emerald-600">Days</p>
+                          <p className="text-xl font-bold text-emerald-800">{dayCount}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-emerald-600">Total Cost ({dayCount} days)</p>
+                          <p className="text-xl font-bold text-emerald-800">{formatCurrency(totalCost)}</p>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             <Button
               type="submit"
@@ -298,7 +466,9 @@ const ApplyRecipe = () => {
               loading={applying}
               disabled={!selectedRecipe || !selectedPen}
             >
-              Apply Recipe
+              {formData.applyMode === 'range' && formData.dateStart && formData.dateEnd && formData.dateStart <= formData.dateEnd
+                ? `Apply Recipe for ${Math.ceil((new Date(formData.dateEnd) - new Date(formData.dateStart)) / (24 * 60 * 60 * 1000)) + 1} Days`
+                : 'Apply Recipe'}
             </Button>
           </form>
         </Card>

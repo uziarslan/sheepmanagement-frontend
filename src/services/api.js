@@ -13,12 +13,23 @@ const handleError = (error) => {
 };
 
 // Helper to transform animal data for frontend (backend -> frontend)
+// Defensive: handles missing/null fields and ensures consistent id for navigation
 const transformAnimalFromBackend = (animal) => {
-  if (!animal) return animal;
-  return {
-    ...animal,
-    penId: animal.pen?.id || animal.pen?._id || animal.pen || animal.penId
-  };
+  if (!animal) return null;
+  try {
+    const pen = animal.pen;
+    const penId = pen && typeof pen === 'object'
+      ? (pen.id || pen._id)
+      : (pen || animal.penId);
+    return {
+      ...animal,
+      id: animal.id || animal._id,
+      penId: penId ?? null
+    };
+  } catch (err) {
+    console.warn('Failed to transform animal:', animal?.tagId || animal?.id || animal?._id, err);
+    return { ...animal, id: animal.id || animal._id, penId: animal.penId ?? null };
+  }
 };
 
 // Helper to transform animal data for backend (frontend -> backend)
@@ -38,9 +49,11 @@ export const animalAPI = {
     try {
       const response = await axiosInstance.get('/animals', { params });
       const result = handleResponse(response);
-      // Transform animals for frontend
+      // Transform animals for frontend (filter out any that fail to transform)
       if (result.data && Array.isArray(result.data)) {
-        result.data = result.data.map(transformAnimalFromBackend);
+        result.data = result.data
+          .map((a) => transformAnimalFromBackend(a))
+          .filter(Boolean);
       }
       return result;
     } catch (error) {
@@ -812,6 +825,30 @@ export const capitalAPI = {
   setInitial: async (amount) => {
     try {
       const response = await axiosInstance.post('/capital/initialize', { amount });
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  uploadInvoice: async (transactionId, file) => {
+    try {
+      const formData = new FormData();
+      formData.append('invoice', file);
+
+      // Let browser set Content-Type with boundary for FormData (required for multer)
+      const response = await axiosInstance.post(
+        `/capital/transactions/${transactionId}/invoice`,
+        formData,
+        {
+          transformRequest: [(data, headers) => {
+            if (data instanceof FormData) {
+              delete headers['Content-Type'];
+            }
+            return data;
+          }]
+        }
+      );
       return handleResponse(response);
     } catch (error) {
       return handleError(error);

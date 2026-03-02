@@ -438,7 +438,7 @@ const AnimalList = () => {
                   <TableCell>
                     <div className="flex items-center justify-end space-x-2">
                       <button
-                        onClick={() => navigate(`/dashboard/animals/${animal.id}`)}
+                        onClick={() => navigate(`/dashboard/animals/${getId(animal)}`)}
                         className="p-2 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                         title="View"
                       >

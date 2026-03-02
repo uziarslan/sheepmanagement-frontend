@@ -593,14 +593,29 @@ const BulkUpload = () => {
     let successCount = 0;
     const failedAnimals = [];
 
+    // Fields the backend create endpoint accepts (avoids "is not allowed" validation errors)
+    const allowedCreateFields = [
+      'tagId', 'electronicId', 'name', 'animalType', 'breedType', 'subcategory',
+      'sex', 'purchasedFrom', 'arrivalDate', 'birthDate', 'purchasePrice',
+      'buyingWeight', 'weight', 'weightDate', 'pen', 'status', 'pedigreeInfo',
+      'sire', 'dam', 'notes'
+    ];
+
     for (const animal of animalsWithPrice) {
       try {
-        const { rowIndex, isValid, errors: rowErrors, ...animalData } = animal;
-        // Map penId to pen for backend
-        animalData.pen = animalData.penId;
-        delete animalData.penId;
-        
-        const response = await animalAPI.create(animalData);
+        const { rowIndex, isValid, errors: rowErrors, penId, ...rest } = animal;
+        // Only send allowed fields to avoid backend validation errors
+        const payload = {};
+        allowedCreateFields.forEach((key) => {
+          const val = key === 'pen' ? (penId || rest.pen) : rest[key];
+          if (val !== undefined) payload[key] = val;
+        });
+        // Ensure dates are Date objects for Joi
+        if (payload.arrivalDate) payload.arrivalDate = new Date(payload.arrivalDate);
+        if (payload.birthDate) payload.birthDate = payload.birthDate ? new Date(payload.birthDate) : null;
+        if (payload.weightDate) payload.weightDate = payload.weightDate ? new Date(payload.weightDate) : undefined;
+
+        const response = await animalAPI.create(payload);
         if (response.success) {
           successCount++;
         } else {

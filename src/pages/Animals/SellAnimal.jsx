@@ -33,6 +33,7 @@ const SellAnimal = () => {
   const [selectedAnimal, setSelectedAnimal] = useState(null);
   const [saleData, setSaleData] = useState({
     sellingPrice: '',
+    sellingCost: '',
     soldDate: new Date().toISOString().split('T')[0]
   });
   const [confirmModal, setConfirmModal] = useState(false);
@@ -45,6 +46,7 @@ const SellAnimal = () => {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
   const [bulkTotalSellingPrice, setBulkTotalSellingPrice] = useState('');
+  const [bulkSellingCost, setBulkSellingCost] = useState('');
   const [bulkSoldDate, setBulkSoldDate] = useState(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
@@ -72,7 +74,7 @@ const SellAnimal = () => {
     const animal = animals.find(a => (a._id || a.id) === animalId);
     setSelectedAnimal(animal);
     setResult(null);
-    setSaleData({ sellingPrice: '', soldDate: new Date().toISOString().split('T')[0] });
+    setSaleData({ sellingPrice: '', sellingCost: '', soldDate: new Date().toISOString().split('T')[0] });
   };
 
   const handleSaleInputChange = (e) => {
@@ -80,10 +82,18 @@ const SellAnimal = () => {
     setSaleData(prev => ({ ...prev, [name]: value }));
   };
 
+  const getTotalSalePrice = () => parseFloat(saleData.sellingPrice) || 0;
+
+  const getOurTotalCost = () => {
+    if (!selectedAnimal) return 0;
+    const animalCost = (selectedAnimal.purchasePrice || 0) + (selectedAnimal.cost || 0);
+    const sellingCost = parseFloat(saleData.sellingCost) || 0;
+    return animalCost + sellingCost;
+  };
+
   const calculateProfit = () => {
     if (!selectedAnimal || !saleData.sellingPrice) return 0;
-    const totalCost = (selectedAnimal.purchasePrice || 0) + (selectedAnimal.cost || 0);
-    return parseFloat(saleData.sellingPrice) - totalCost;
+    return getTotalSalePrice() - getOurTotalCost();
   };
 
   const getTotalCost = () => {
@@ -268,6 +278,7 @@ const SellAnimal = () => {
 
       setBulkPreview(preview);
       setBulkTotalSellingPrice('');
+      setBulkSellingCost('');
       setBulkResult(null);
     } catch (error) {
       toast.error('Failed to parse file');
@@ -299,10 +310,12 @@ const SellAnimal = () => {
   const getBulkCalculated = () => {
     const validRows = bulkPreview.filter(r => r.status === 'valid');
     const count = validRows.length;
-    const total = Number(bulkTotalSellingPrice) || 0;
-    const hasTotalSellingPrice = total > 0 && count > 0;
+    const baseTotal = Number(bulkTotalSellingPrice) || 0;
+    const sellingCost = Number(bulkSellingCost) || 0;
+    const hasTotalSellingPrice = baseTotal > 0 && count > 0;
 
-    const allocations = hasTotalSellingPrice ? allocateTotalSellingPrice(total, count) : [];
+    // Allocate only base selling price (selling cost is our expense, NOT added to price)
+    const allocations = hasTotalSellingPrice ? allocateTotalSellingPrice(baseTotal, count) : [];
     let allocationIdx = 0;
 
     const rows = bulkPreview.map(row => {
@@ -331,7 +344,7 @@ const SellAnimal = () => {
       const baseTotalPrice = totalCost;
       const baseTotalPricePerKg = weight > 0 ? baseTotalPrice / weight : 0;
 
-      // Sale values (only when user enters total selling price)
+      // Sale values - allocation of base selling price only (selling cost is our expense)
       const salePrice = hasTotalSellingPrice ? (allocations[allocationIdx++] ?? 0) : 0;
       const salePricePerKg = weight > 0 ? salePrice / weight : 0;
       const profit = hasTotalSellingPrice ? salePrice - totalCost : null;
@@ -352,16 +365,18 @@ const SellAnimal = () => {
     const totalBasePrice = rows.reduce((sum, r) => sum + (r.baseTotalPrice || 0), 0);
     const totalSalePrice = hasTotalSellingPrice ? rows.reduce((sum, r) => sum + (r.salePrice || 0), 0) : 0;
     const totalCostSum = rows.reduce((sum, r) => sum + (r.totalCost || 0), 0);
-    const totalProfit = hasTotalSellingPrice
-      ? rows.reduce((sum, r) => sum + (r.profit ?? 0), 0)
-      : 0;
-    const perAnimal = count > 0 && total > 0 ? total / count : 0;
+    // Selling cost is our expense - reduces profit (add to total cost for profit calc)
+    const ourTotalCost = totalCostSum + sellingCost;
+    const totalProfit = hasTotalSellingPrice ? totalSalePrice - ourTotalCost : 0;
+    const perAnimal = count > 0 && baseTotal > 0 ? baseTotal / count : 0;
 
     return {
       rows,
       totalBasePrice,
       totalSalePrice,
       totalCost: totalCostSum,
+      sellingCost,
+      ourTotalCost,
       totalProfit,
       perAnimal,
       validCount: count,
@@ -376,24 +391,32 @@ const SellAnimal = () => {
     }
 
     const { rows, validCount } = getBulkCalculated();
-    const total = Number(bulkTotalSellingPrice) || 0;
+    const baseTotal = Number(bulkTotalSellingPrice) || 0;
     if (validCount === 0) {
       toast.error('No valid animals to process');
       return;
     }
-    if (!total || total <= 0) {
+    if (!baseTotal || baseTotal <= 0) {
       toast.error('Please enter total selling price (must be > 0)');
       return;
     }
 
-    const validAnimals = rows
-      .filter(item => item.status === 'valid')
-      .map(item => ({
+    const sellingCostTotal = Number(bulkSellingCost) || 0;
+    const validRows = rows.filter(item => item.status === 'valid');
+    const costPerAnimal = validRows.length > 0 ? sellingCostTotal / validRows.length : 0;
+
+    const validAnimals = validRows.map((item, idx) => {
+      const sellingCostShare = idx < validRows.length - 1
+        ? Math.round(costPerAnimal * 100) / 100
+        : Math.round((sellingCostTotal - costPerAnimal * (validRows.length - 1)) * 100) / 100;
+      return {
         animalId: item.animalId,
         tagId: item.tagId,
         sellingPrice: item.salePrice,
-        soldDate: bulkSoldDate
-      }));
+        soldDate: bulkSoldDate,
+        sellingCost: sellingCostShare
+      };
+    });
     if (validAnimals.length === 0) {
       toast.error('No valid animals to process');
       return;
@@ -408,6 +431,7 @@ const SellAnimal = () => {
         setBulkFile(null);
         setBulkPreview([]);
         setBulkTotalSellingPrice('');
+        setBulkSellingCost('');
         fetchActiveAnimals(); // Refresh the list
       }
     } catch (error) {
@@ -509,6 +533,17 @@ const SellAnimal = () => {
                 />
 
                 <Input
+                  label="Selling Cost"
+                  type="number"
+                  name="sellingCost"
+                  value={saleData.sellingCost}
+                  onChange={handleSaleInputChange}
+                    placeholder="e.g. transport, commission (our expense)"
+                  step="0.01"
+                  min="0"
+                />
+
+                <Input
                   label="Sale Date"
                   type="date"
                   name="soldDate"
@@ -571,16 +606,28 @@ const SellAnimal = () => {
                         <span className="text-gray-500">Operational Cost</span>
                         <span className="font-medium">{formatCurrency(selectedAnimal.cost || 0)}</span>
                       </div>
-                      <div className="flex justify-between text-sm border-t pt-3 mt-3">
-                        <span className="font-semibold text-gray-900">Total Cost</span>
-                        <span className="font-bold">{formatCurrency(getTotalCost())}</span>
-                      </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Animal Cost</span>
+                            <span className="font-medium">{formatCurrency(getTotalCost())}</span>
+                          </div>
+                          {(parseFloat(saleData.sellingCost) || 0) > 0 && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-500">Selling Cost (expense)</span>
+                              <span className="font-medium text-amber-600">
+                                {formatCurrency(parseFloat(saleData.sellingCost) || 0)}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex justify-between text-sm border-t pt-3 mt-3">
+                            <span className="font-semibold text-gray-900">Our Total Cost</span>
+                            <span className="font-bold">{formatCurrency(getOurTotalCost())}</span>
+                          </div>
                       {saleData.sellingPrice && (
                         <>
                           <div className="flex justify-between text-sm">
                             <span className="text-gray-500">Selling Price</span>
-                            <span className="font-medium text-blue-600">
-                              {formatCurrency(parseFloat(saleData.sellingPrice) || 0)}
+                            <span className="font-semibold text-indigo-600">
+                              {formatCurrency(getTotalSalePrice())}
                             </span>
                           </div>
                           <div className="flex justify-between text-sm border-t pt-3 mt-3">
@@ -592,7 +639,7 @@ const SellAnimal = () => {
                           <div className="flex justify-between text-sm">
                             <span className="text-gray-500">Profit Margin</span>
                             <span className={`font-medium ${calculateProfit() >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {getTotalCost() > 0 ? ((calculateProfit() / getTotalCost()) * 100).toFixed(2) : 0}%
+                              {getOurTotalCost() > 0 ? ((calculateProfit() / getOurTotalCost()) * 100).toFixed(2) : 0}%
                             </span>
                           </div>
                         </>
@@ -614,7 +661,7 @@ const SellAnimal = () => {
                   </div>
                   <div className="space-y-2 text-sm text-green-700">
                     <p>Tag ID: <strong>{result.animal.tagId}</strong></p>
-                    <p>Total Cost: <strong>{formatCurrency(result.totalCost)}</strong></p>
+                    <p>Our Total Cost: <strong>{formatCurrency((result.totalCost || 0) + (result.soldCost || 0))}</strong></p>
                     <p>Selling Price: <strong>{formatCurrency(result.sellingPrice)}</strong></p>
                     <p>Profit: <strong className={result.profit >= 0 ? 'text-green-600' : 'text-red-600'}>
                       {formatCurrency(result.profit)}
@@ -708,9 +755,19 @@ const SellAnimal = () => {
                       min="0"
                       required
                     />
+                    <Input
+                      label="Selling Cost"
+                      type="number"
+                      name="bulkSellingCost"
+                      value={bulkSellingCost}
+                      onChange={(e) => setBulkSellingCost(e.target.value)}
+                      placeholder="e.g. transport, commission (our expense, reduces profit)"
+                      step="0.01"
+                      min="0"
+                    />
                     {Number(bulkTotalSellingPrice) > 0 && bulkPreview.filter(p => p.status === 'valid').length > 0 && (
                       <p className="text-xs text-gray-500 -mt-2">
-                        Per animal selling price:{" "}
+                        Per animal:{" "}
                         <span className="font-semibold text-gray-800">
                           {formatCurrency(getBulkCalculated().perAnimal)}
                         </span>
@@ -865,17 +922,27 @@ const SellAnimal = () => {
                     </table>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t">
                     <div className="p-3 bg-gray-50 rounded">
-                      <p className="text-xs text-gray-500">Sum of Total Price</p>
+                      <p className="text-xs text-gray-500">Animal Cost</p>
                       <p className="text-lg font-bold text-blue-600">{formatCurrency(getBulkCalculated().totalBasePrice)}</p>
+                    </div>
+                    {getBulkCalculated().sellingCost > 0 && (
+                      <div className="p-3 bg-amber-50 rounded">
+                        <p className="text-xs text-amber-700">Selling Cost (our expense)</p>
+                        <p className="text-lg font-bold text-amber-600">{formatCurrency(getBulkCalculated().sellingCost)}</p>
+                      </div>
+                    )}
+                    <div className="p-3 bg-gray-50 rounded">
+                      <p className="text-xs text-gray-500">Our Total Cost</p>
+                      <p className="text-lg font-bold">{formatCurrency(getBulkCalculated().ourTotalCost)}</p>
                     </div>
                     <div className="p-3 bg-gray-50 rounded">
                       <p className="text-xs text-gray-500">Total Selling Price</p>
                       <p className="text-lg font-bold text-indigo-600">{formatCurrency(getTotalBulkRevenue())}</p>
                     </div>
-                    <div className="p-3 bg-green-50 rounded">
-                      <p className="text-xs text-green-600">Total Profit</p>
+                    <div className={`p-3 rounded ${getTotalBulkProfit() >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                      <p className={`text-xs ${getTotalBulkProfit() >= 0 ? 'text-green-600' : 'text-red-600'}`}>Total Profit</p>
                       <p className={`text-lg font-bold ${getTotalBulkProfit() >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {formatCurrency(getTotalBulkProfit())}
                       </p>
@@ -900,7 +967,7 @@ const SellAnimal = () => {
         title="Confirm Animal Sale"
         message={
           selectedAnimal
-            ? `Are you sure you want to mark "${selectedAnimal.name || selectedAnimal.tagId}" as sold for ${formatCurrency(parseFloat(saleData.sellingPrice) || 0)}? This action cannot be undone.`
+            ? `Are you sure you want to mark "${selectedAnimal.name || selectedAnimal.tagId}" as sold for ${formatCurrency(getTotalSalePrice())}?${(parseFloat(saleData.sellingCost) || 0) > 0 ? ` Selling cost (${formatCurrency(parseFloat(saleData.sellingCost))}) will be deducted from profit.` : ''} This action cannot be undone.`
             : 'Are you sure you want to proceed?'
         }
         confirmText="Confirm Sale"

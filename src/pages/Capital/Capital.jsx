@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
 import {
   HiOutlineCurrencyDollar,
   HiOutlinePlus,
   HiOutlineTrendingUp,
   HiOutlineTrendingDown,
-  HiOutlineCalendar
+  HiOutlineCalendar,
+  HiOutlineDocumentAdd,
+  HiOutlineExternalLink
 } from 'react-icons/hi';
 import { capitalAPI } from '../../services/mockApi';
 import { formatCurrency, formatDate } from '../../utils/helpers';
@@ -32,6 +34,9 @@ const Capital = () => {
     description: ''
   });
   const [errors, setErrors] = useState({});
+  const [uploadingId, setUploadingId] = useState(null);
+  const [pendingUploadTransactionId, setPendingUploadTransactionId] = useState(null);
+  const fileInputRef = useRef(null);
 
   // Helper to get id from item (supports both _id and id)
   const getId = (item) => item?._id ?? item?.id;
@@ -126,6 +131,43 @@ const Capital = () => {
     setModalOpen(true);
   };
 
+  const triggerInvoiceUpload = (transaction) => {
+    setPendingUploadTransactionId(getId(transaction));
+    fileInputRef.current?.click();
+  };
+
+  const handleInvoiceFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    const transactionId = pendingUploadTransactionId;
+    setPendingUploadTransactionId(null);
+    e.target.value = '';
+
+    if (!file || !transactionId) return;
+
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload an image (JPEG, PNG, WebP) or PDF file.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size must be less than 5MB.');
+      return;
+    }
+
+    setUploadingId(transactionId);
+    try {
+      const response = await capitalAPI.uploadInvoice(transactionId, file);
+      if (response.success) {
+        toast.success('Invoice uploaded successfully');
+        setCapital(response.data);
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to upload invoice');
+    } finally {
+      setUploadingId(null);
+    }
+  };
+
   if (loading) {
     return <PageLoader />;
   }
@@ -175,8 +217,8 @@ const Capital = () => {
           </div>
         </Card>
 
-        {/* Balance, Invested, Profit, Loss — 2x2 grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+        {/* Balance, P&L, Invested, Profit, Loss — grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-5">
           <Card className="bg-gradient-to-br from-blue-500 to-blue-600">
             <div className="text-white p-1">
               <div className="flex items-center justify-between mb-3">
@@ -185,8 +227,25 @@ const Capital = () => {
                   <HiOutlineTrendingUp className="w-5 h-5 text-white" />
                 </div>
               </div>
-              <p className="text-2xl font-bold">{formatCurrency(capital?.availableAmount)}</p>
+              <p className="text-2xl font-bold">
+                {formatCurrency((capital?.availableAmount ?? 0) + (capital?.loss ?? 0))}
+              </p>
               <p className="text-blue-100 text-xs mt-2">
+                Actual cash in hand (before loss deduction)
+              </p>
+            </div>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-cyan-500 to-cyan-600">
+            <div className="text-white p-1">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-cyan-100 font-medium text-sm">P&L Balance</p>
+                <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center">
+                  <HiOutlineTrendingDown className="w-5 h-5 text-white" />
+                </div>
+              </div>
+              <p className="text-2xl font-bold">{formatCurrency(capital?.availableAmount)}</p>
+              <p className="text-cyan-100 text-xs mt-2">
                 {capital?.totalCapital > 0
                   ? `${((capital?.availableAmount / capital?.totalCapital) * 100).toFixed(1)}% available`
                   : '0% available'}
@@ -243,6 +302,15 @@ const Capital = () => {
         </div>
       </div>
 
+      {/* Hidden file input for invoice upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf"
+        className="hidden"
+        onChange={handleInvoiceFileChange}
+      />
+
       {/* Transaction History */}
       <Card>
         <div className="flex items-center justify-between mb-6">
@@ -269,10 +337,10 @@ const Capital = () => {
             capital?.history?.slice().reverse().map((transaction) => (
               <div
                 key={getId(transaction)}
-                className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+                className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors gap-4"
               >
-                <div className="flex items-center space-x-4">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                <div className="flex items-center space-x-4 flex-1 min-w-0">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
                     transaction.amount > 0 ? 'bg-green-100' : 'bg-red-100'
                   }`}>
                     {transaction.amount > 0 ? (
@@ -281,20 +349,45 @@ const Capital = () => {
                       <HiOutlineTrendingDown className="w-5 h-5 text-red-600" />
                     )}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-medium text-gray-900">{transaction.type}</p>
-                    <p className="text-sm text-gray-500">{transaction.description}</p>
+                    <p className="text-sm text-gray-500 truncate">{transaction.description}</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className={`font-semibold ${
-                    transaction.amount > 0 ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {transaction.amount > 0 ? '+' : ''}{formatCurrency(transaction.amount)}
-                  </p>
-                  <div className="flex items-center text-sm text-gray-500 mt-1">
-                    <HiOutlineCalendar className="w-4 h-4 mr-1" />
-                    {formatDate(transaction.date)}
+                <div className="flex items-center gap-3 shrink-0">
+                  <div className="text-right">
+                    <p className={`font-semibold ${
+                      transaction.amount > 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {transaction.amount > 0 ? '+' : ''}{formatCurrency(transaction.amount)}
+                    </p>
+                    <div className="flex items-center text-sm text-gray-500 mt-1 justify-end">
+                      <HiOutlineCalendar className="w-4 h-4 mr-1 shrink-0" />
+                      {formatDate(transaction.date)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {transaction.invoiceUrl ? (
+                      <a
+                        href={transaction.invoiceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                      >
+                        <HiOutlineExternalLink className="w-4 h-4" />
+                        View Invoice
+                      </a>
+                    ) : null}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      icon={HiOutlineDocumentAdd}
+                      onClick={() => triggerInvoiceUpload(transaction)}
+                      disabled={uploadingId === getId(transaction)}
+                      loading={uploadingId === getId(transaction)}
+                    >
+                      {transaction.invoiceUrl ? 'Change' : 'Upload Invoice'}
+                    </Button>
                   </div>
                 </div>
               </div>

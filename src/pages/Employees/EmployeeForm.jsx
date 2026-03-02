@@ -144,31 +144,58 @@ const EmployeeForm = () => {
 
     setSubmitting(true);
     try {
-      const dataToSubmit = {
-        ...formData,
-        salary: parseFloat(formData.salary),
-        allowances: parseFloat(formData.allowances) || 0,
-        emergencyContact: formData.emergencyContact && typeof formData.emergencyContact === 'object'
-          ? {
-              name: (formData.emergencyContact.name || '').trim() || null,
-              phone: (formData.emergencyContact.phone || '').trim() || null,
-              relation: (formData.emergencyContact.relation || '').trim() || null
-            }
-          : null
-      };
+      const emergencyContact = formData.emergencyContact && typeof formData.emergencyContact === 'object'
+        ? {
+            name: (formData.emergencyContact.name || '').trim() || null,
+            phone: (formData.emergencyContact.phone || '').trim() || null,
+            relation: (formData.emergencyContact.relation || '').trim() || null
+          }
+        : null;
 
-      if (!isEdit && formData.createCredentials) {
-        dataToSubmit.createCredentials = true;
-        dataToSubmit.loginPassword = formData.loginPassword;
-      } else {
-        delete dataToSubmit.createCredentials;
-        delete dataToSubmit.loginPassword;
-      }
-
+      let dataToSubmit;
       if (isEdit) {
+        // Only send fields the backend update accepts (exclude advanceBalance, picture, createdBy, documents, createdAt, updatedAt, totalCompensation, tenureMonths, id)
+        dataToSubmit = {
+          name: formData.name?.trim(),
+          cnic: formData.cnic?.trim(),
+          phone: formData.phone?.trim(),
+          email: (formData.email || '').trim() || null,
+          address: (formData.address || '').trim() || null,
+          designation: formData.designation,
+          department: formData.department,
+          dateOfJoining: formData.dateOfJoining,
+          dateOfLeaving: formData.dateOfLeaving || null,
+          salary: parseFloat(formData.salary),
+          allowances: parseFloat(formData.allowances) || 0,
+          bankName: formData.bankName || null,
+          accountNumber: (formData.accountNumber || '').trim() || null,
+          status: formData.status,
+          emergencyContact,
+          notes: (formData.notes || '').trim() || null
+        };
         await employeeAPI.update(id, dataToSubmit);
         toast.success('Employee updated successfully');
       } else {
+        dataToSubmit = {
+          name: formData.name?.trim(),
+          cnic: formData.cnic?.trim(),
+          phone: formData.phone?.trim(),
+          email: (formData.email || '').trim() || null,
+          address: (formData.address || '').trim() || null,
+          designation: formData.designation,
+          department: formData.department,
+          dateOfJoining: formData.dateOfJoining,
+          salary: parseFloat(formData.salary),
+          allowances: parseFloat(formData.allowances) || 0,
+          bankName: formData.bankName || null,
+          accountNumber: (formData.accountNumber || '').trim() || null,
+          emergencyContact,
+          notes: (formData.notes || '').trim() || null
+        };
+        if (formData.createCredentials) {
+          dataToSubmit.createCredentials = true;
+          dataToSubmit.loginPassword = formData.loginPassword;
+        }
         await employeeAPI.create(dataToSubmit);
         toast.success('Employee added successfully');
       }
