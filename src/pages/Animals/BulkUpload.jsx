@@ -115,7 +115,6 @@ const BulkUpload = () => {
     { key: 'purchasedFrom', label: 'Purchased From', required: false, example: 'Pakistan', options: countries },
     { key: 'arrivalDate', label: 'Arrival Date', required: true, example: '2025-01-15' },
     { key: 'birthDate', label: 'Birth Date', required: false, example: '2024-06-15' },
-    { key: 'purchasePrice', label: 'Purchase Price', required: true, example: '50000' },
     { key: 'buyingWeight', label: 'Buying Weight (kg)', required: false, example: '35' },
     { key: 'weight', label: 'Current Weight (kg)', required: true, example: '35' },
     { key: 'weightDate', label: 'Weight Date', required: false, example: '2025-01-15' },
@@ -145,6 +144,7 @@ const BulkUpload = () => {
       ...templateColumns.filter(c => c.required).map(c => [`- ${c.label}`]),
       [''],
       ['Note: Pen will be selected after uploading, in the preview table.'],
+      ['Note: Purchase Price is NOT needed in the file. You will enter total amount after upload.'],
       [''],
       ['Valid Options:'],
       [`Animal Type: ${animalTypes.join(', ')}`],
@@ -157,7 +157,7 @@ const BulkUpload = () => {
       ['Price & Weight: Numbers only (no currency symbols)'],
       [''],
       ['Weight Fields:'],
-      ['- Buying Weight: Initial weight at purchase (used for price/kg calculation)'],
+      ['- Buying Weight: Initial weight at purchase'],
       ['- Current Weight: Present weight of the animal'],
       [''],
       ['Important:'],
@@ -254,17 +254,7 @@ const BulkUpload = () => {
       rowErrors.push(`"${row.purchasedFrom}" is not a valid country. Valid options: ${countries.slice(0, 5).join(', ')}...`);
     }
 
-    // Validate numbers
-    if (row.purchasePrice) {
-      const price = parseFloat(row.purchasePrice);
-      if (isNaN(price)) {
-        rowErrors.push(`Purchase Price "${row.purchasePrice}" is not a valid number`);
-      } else if (price <= 0) {
-        rowErrors.push('Purchase Price must be greater than 0');
-      } else {
-        validatedData.purchasePrice = price;
-      }
-    }
+    // Purchase price is NOT from Excel - collected via modal after upload
 
     if (row.buyingWeight) {
       const buyingWeight = parseFloat(row.buyingWeight);
@@ -561,21 +551,18 @@ const BulkUpload = () => {
     setShowTotalAmountModal(true);
   };
 
-  // Calculate prices based on total amount
+  // Auto-determine purchase price per animal: total amount ÷ number of animals (equal split)
   const calculatePricePerAnimal = (validAnimals, totalAmt) => {
     if (!validAnimals || validAnimals.length === 0) return [];
-    
-    const totalWeight = validAnimals.reduce((sum, a) => sum + (a.weight || 0), 0);
-    const totalAmountNum = parseFloat(totalAmt);
 
-    return validAnimals.map(animal => {
-      const weightPercentage = (animal.weight || 0) / totalWeight;
-      const pricePerAnimal = totalAmountNum * weightPercentage;
-      return {
-        ...animal,
-        purchasePrice: parseFloat(pricePerAnimal.toFixed(2))
-      };
-    });
+    const count = validAnimals.length;
+    const totalAmountNum = parseFloat(totalAmt);
+    const pricePerAnimal = totalAmountNum / count;
+
+    return validAnimals.map(animal => ({
+      ...animal,
+      purchasePrice: parseFloat(pricePerAnimal.toFixed(2))
+    }));
   };
 
   // Handle submission of total amount
@@ -1010,7 +997,7 @@ const BulkUpload = () => {
                 Total Amount Paid for {animalsToUpload.length} Animal{animalsToUpload.length !== 1 ? 's' : ''}
               </h3>
               <p className="text-sm text-gray-600 mb-4">
-                Enter the total amount you paid for all these animals. The price will be distributed based on individual weights.
+                Enter the total (collective) amount you paid for all these animals. The price will be divided equally per animal.
               </p>
 
               <div className="mb-6">
@@ -1030,23 +1017,12 @@ const BulkUpload = () => {
                 </div>
               </div>
 
-              {animalsToUpload.length > 0 && (
+              {animalsToUpload.length > 0 && totalAmount && parseFloat(totalAmount) > 0 && (
                 <div className="mb-6 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <p className="text-xs text-blue-800 font-medium mb-2">Price Distribution:</p>
-                  <div className="space-y-1 text-xs text-blue-700">
-                    <p>
-                      Total Weight: <span className="font-semibold">
-                        {(animalsToUpload.reduce((sum, a) => sum + (a.weight || 0), 0)).toFixed(1)} kg
-                      </span>
-                    </p>
-                    {totalAmount && (
-                      <p>
-                        Price per kg: <span className="font-semibold">
-                          Rs. {(parseFloat(totalAmount) / animalsToUpload.reduce((sum, a) => sum + (a.weight || 0), 0)).toFixed(2)}
-                        </span>
-                      </p>
-                    )}
-                  </div>
+                  <p className="text-xs text-blue-800 font-medium mb-2">Per-Animal Price (auto-calculated):</p>
+                  <p className="text-sm text-blue-700 font-semibold">
+                    Rs. {(parseFloat(totalAmount) / animalsToUpload.length).toFixed(2)} per animal
+                  </p>
                 </div>
               )}
 

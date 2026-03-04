@@ -31,7 +31,8 @@ const StockCategoryList = ({
   title,
   subtitle,
   addPath,
-  bulkUploadPath
+  bulkUploadPath,
+  showAssetType = false
 }) => {
   const navigate = useNavigate();
   const [stocks, setStocks] = useState([]);
@@ -142,6 +143,7 @@ const StockCategoryList = ({
           <TableHead>
             <TableHeader>Date</TableHeader>
             <TableHeader>Product</TableHeader>
+            {showAssetType && <TableHeader>Type</TableHeader>}
             <TableHeader>Quantity</TableHeader>
             <TableHeader>Unit Size</TableHeader>
             <TableHeader>Total Qty</TableHeader>
@@ -154,7 +156,7 @@ const StockCategoryList = ({
             {filteredStocks.length === 0 ? (
               <TableEmpty
                 message={search ? 'No stock items match your search' : 'No stock items registered yet'}
-                colSpan={9}
+                colSpan={showAssetType ? 10 : 9}
               />
             ) : (
               filteredStocks.map((stock) => {
@@ -178,6 +180,11 @@ const StockCategoryList = ({
                         <span className="font-medium text-gray-900">{stock.productName}</span>
                       </div>
                     </TableCell>
+                    {showAssetType && (
+                      <TableCell>
+                        <span className="text-sm text-gray-700">{stock.assetType || '-'}</span>
+                      </TableCell>
+                    )}
                     <TableCell>{stock.packQuantity ?? '-'}</TableCell>
                     <TableCell>{unitSize === '-' ? '-' : `${unitSize} ${stock.unit || ''}`}</TableCell>
                     <TableCell>{totalQty} {stock.unit}</TableCell>

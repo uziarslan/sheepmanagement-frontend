@@ -11,11 +11,12 @@ import {
   HiOutlineExclamation,
   HiOutlineX
 } from 'react-icons/hi';
-import { stockAPI } from '../../services/mockApi';
+import { stockAPI, capitalAPI } from '../../services/mockApi';
 import {
   PageHeader,
   Card,
   Button,
+  Input,
   Table,
   TableHead,
   TableHeader,
@@ -41,6 +42,8 @@ const StockCategoryBulkUpload = ({
   const [parsedData, setParsedData] = useState([]);
   const [uploadErrors, setUploadErrors] = useState([]);
   const [dragActive, setDragActive] = useState(false);
+  const [transportation, setTransportation] = useState('');
+  const [loadingUnloading, setLoadingUnloading] = useState('');
 
   const templateColumns = [
     { key: 'purchaseDate', label: 'Date', required: true, example: '2025-01-15' },
@@ -283,6 +286,21 @@ const StockCategoryBulkUpload = ({
     setUploading(false);
 
     if (failedItems.length === 0) {
+      const transport = parseFloat(transportation) || 0;
+      const loading = parseFloat(loadingUnloading) || 0;
+      if (transport > 0 || loading > 0) {
+        try {
+          const totalExpense = transport + loading;
+          await capitalAPI.update(
+            -totalExpense,
+            'Stock Purchase',
+            `Bulk stock purchase - Transportation: Rs.${transport.toLocaleString()}${loading > 0 ? `, Loading/Unloading: Rs.${loading.toLocaleString()}` : ''}`
+          );
+        } catch (capErr) {
+          console.error('Failed to deduct transport/loading from capital:', capErr);
+          toast.error('Stock added but failed to record transport/loading expense. Please add manually.');
+        }
+      }
       toast.success(`Successfully added ${successCount} item(s)!`);
       navigate(`/dashboard/stock/${category.toLowerCase().replace(/\s+/g, '-')}`);
     } else {
@@ -380,6 +398,33 @@ const StockCategoryBulkUpload = ({
               <Button variant="outline" icon={HiOutlineTrash} onClick={clearData}>Clear All</Button>
               <Button icon={HiOutlineCloudUpload} onClick={handleUpload} loading={uploading}>Upload</Button>
             </div>
+          </div>
+
+          <div className="mb-6 p-4 bg-gray-50 rounded-xl">
+            <p className="text-sm font-medium text-gray-700 mb-3">Additional expenses (optional)</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
+              <Input
+                label="Transportation (Rs.)"
+                type="number"
+                value={transportation}
+                onChange={(e) => setTransportation(e.target.value)}
+                placeholder="e.g., 500"
+                min={0}
+              />
+              <Input
+                label="Loading / Unloading (Rs.)"
+                type="number"
+                value={loadingUnloading}
+                onChange={(e) => setLoadingUnloading(e.target.value)}
+                placeholder="e.g., 200"
+                min={0}
+              />
+            </div>
+            {((parseFloat(transportation) || 0) + (parseFloat(loadingUnloading) || 0)) > 0 && (
+              <p className="text-sm text-gray-600 mt-3">
+                Extra cost to deduct: Rs.{((parseFloat(transportation) || 0) + (parseFloat(loadingUnloading) || 0)).toLocaleString()}
+              </p>
+            )}
           </div>
 
           {uploadErrors.length > 0 && (

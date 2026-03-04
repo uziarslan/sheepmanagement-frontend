@@ -16,9 +16,9 @@ const StockOverview = () => {
       path: '/dashboard/stock/feeding'
     },
     {
-      title: 'Farm Accessories',
-      description: 'Manage accessories and supplies',
-      path: '/dashboard/stock/farm-accessories'
+      title: 'Assets',
+      description: 'Buildings, machinery, and other farm assets',
+      path: '/dashboard/stock/assets'
     }
   ];
 

@@ -7,6 +7,7 @@ import {
   Register,
   Dashboard,
   Capital,
+  Liability,
   AnimalList,
   AnimalForm,
   BulkUpload,
@@ -18,10 +19,10 @@ import {
   StockOverview,
   StockMedicationList,
   StockFeedingList,
-  StockAccessoryList,
+  StockAssetList,
   StockMedicationForm,
   StockFeedingForm,
-  StockAccessoryForm,
+  StockAssetForm,
   StockMedicationBulkUpload,
   StockFeedingBulkUpload,
   StockEdit,
@@ -156,6 +157,16 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* Liability - Loans we borrow (Admin only) */}
+          <Route
+            path="liabilities"
+            element={
+              <ProtectedRoute allowedRoles={['Admin']}>
+                <Liability />
+              </ProtectedRoute>
+            }
+          />
           
           {/* Animals */}
           <Route path="animals" element={<AnimalList />} />
@@ -181,8 +192,8 @@ function App() {
           <Route path="stock/feeding" element={<StockFeedingList />} />
           <Route path="stock/feeding/add" element={<StockFeedingForm />} />
           <Route path="stock/feeding/bulk-upload" element={<StockFeedingBulkUpload />} />
-          <Route path="stock/farm-accessories" element={<StockAccessoryList />} />
-          <Route path="stock/farm-accessories/add" element={<StockAccessoryForm />} />
+          <Route path="stock/assets" element={<StockAssetList />} />
+          <Route path="stock/assets/add" element={<StockAssetForm />} />
           <Route path="stock/:id/edit" element={<StockEdit />} />
           
           {/* Employees (Admin only) */}

@@ -5,6 +5,7 @@ import { PageLoader } from '../../components/common/Spinner';
 import StockMedicationForm from './StockMedicationForm';
 import StockFeedingForm from './StockFeedingForm';
 import StockAccessoryForm from './StockAccessoryForm';
+import StockAssetForm from './StockAssetForm';
 
 const StockEdit = () => {
   const { id } = useParams();
@@ -30,6 +31,7 @@ const StockEdit = () => {
 
   if (category === 'Medication') return <StockMedicationForm />;
   if (category === 'Feeding') return <StockFeedingForm />;
+  if (category === 'Assets') return <StockAssetForm />;
   return <StockAccessoryForm />;
 };
 

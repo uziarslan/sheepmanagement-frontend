@@ -11,7 +11,8 @@ import {
   HiOutlineChevronDown,
   HiOutlineHeart,
   HiOutlineBeaker,
-  HiOutlineShieldCheck
+  HiOutlineShieldCheck,
+  HiOutlineClipboardList
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
 import { useAuth } from '../../Context/AuthContext';
@@ -32,6 +33,12 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
       name: 'Capital',
       icon: HiOutlineCurrencyDollar,
       path: '/dashboard/capital',
+      roles: ['Admin']
+    },
+    {
+      name: 'Liabilities',
+      icon: HiOutlineClipboardList,
+      path: '/dashboard/liabilities',
       roles: ['Admin']
     },
     {
@@ -79,11 +86,11 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
           ]
         },
         { 
-          name: 'Accessories', 
-          path: '/dashboard/stock/farm-accessories',
+          name: 'Assets', 
+          path: '/dashboard/stock/assets',
           submenu: [
-            { name: 'All Accessories', path: '/dashboard/stock/farm-accessories' },
-            { name: 'Add Accessory', path: '/dashboard/stock/farm-accessories/add' }
+            { name: 'All Assets', path: '/dashboard/stock/assets' },
+            { name: 'Add Asset', path: '/dashboard/stock/assets/add' }
           ]
         }
       ]
@@ -204,7 +211,12 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
         <nav className="flex-1 overflow-y-auto py-4 min-h-0">
           <ul className="space-y-1 px-3">
             {menuItems
-              .filter((item) => !item.roles || (user && item.roles.includes(user.role)))
+              .filter((item) => {
+                if (!item.roles) return true;
+                if (!user) return false;
+                const userRole = (user.role || user.userRole || '').toString();
+                return item.roles.some((r) => r.toString().toLowerCase() === userRole.toLowerCase());
+              })
               .map((item) => (
               <li key={item.name}>
                 {item.submenu ? (

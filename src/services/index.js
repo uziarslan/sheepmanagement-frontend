@@ -5,6 +5,7 @@ export {
   stockAPI,
   employeeAPI,
   advanceAPI,
+  liabilityAPI,
   healthAPI,
   feedAPI,
   capitalAPI,

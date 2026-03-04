@@ -448,6 +448,56 @@ export const advanceAPI = {
   }
 };
 
+// ============ LIABILITY API ============
+export const liabilityAPI = {
+  getAll: async (params = {}) => {
+    try {
+      const response = await axiosInstance.get('/liabilities', { params });
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  getByLender: async (lenderName) => {
+    try {
+      const response = await axiosInstance.get(`/liabilities/lender/${encodeURIComponent(lenderName)}`);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  create: async (data) => {
+    try {
+      const response = await axiosInstance.post('/liabilities', data);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  delete: async (id) => {
+    try {
+      const response = await axiosInstance.delete(`/liabilities/${id}`);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  getSummary: async (startDate, endDate) => {
+    try {
+      const response = await axiosInstance.get('/liabilities/summary', {
+        params: { startDate, endDate }
+      });
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+};
+
 // Helper to transform health data for backend
 const transformHealthDataForBackend = (data) => {
   const transformed = { ...data };
@@ -786,18 +836,20 @@ export const capitalAPI = {
     }
   },
 
-  initialize: async (amount) => {
+  initialize: async ({ partner1 = 0, partner2 = 0, retainedEarnings = 0 }) => {
     try {
-      const response = await axiosInstance.post('/capital/initialize', { amount });
+      const response = await axiosInstance.post('/capital/initialize', { partner1, partner2, retainedEarnings });
       return handleResponse(response);
     } catch (error) {
       return handleError(error);
     }
   },
 
-  update: async (amount, type, description) => {
+  update: async (amount, type, description, investmentSubtype = null) => {
     try {
-      const response = await axiosInstance.put('/capital', { amount, type, description });
+      const body = { amount, type, description };
+      if (investmentSubtype) body.investmentSubtype = investmentSubtype;
+      const response = await axiosInstance.put('/capital', body);
       return handleResponse(response);
     } catch (error) {
       return handleError(error);
@@ -822,9 +874,9 @@ export const capitalAPI = {
     }
   },
 
-  setInitial: async (amount) => {
+  setInitial: async ({ partner1 = 0, partner2 = 0, retainedEarnings = 0 }) => {
     try {
-      const response = await axiosInstance.post('/capital/initialize', { amount });
+      const response = await axiosInstance.post('/capital/initialize', { partner1, partner2, retainedEarnings });
       return handleResponse(response);
     } catch (error) {
       return handleError(error);

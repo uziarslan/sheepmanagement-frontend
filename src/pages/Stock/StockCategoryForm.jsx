@@ -7,7 +7,8 @@ import {
   PageHeader,
   Card,
   Button,
-  Input
+  Input,
+  Select
 } from '../../components/common';
 import { PageLoader } from '../../components/common/Spinner';
 
@@ -16,7 +17,9 @@ const StockCategoryForm = ({
   title,
   unit,
   unitLabel,
-  showUnitSize = true
+  showUnitSize = true,
+  assetTypes = null,
+  defaultPackQuantity = ''
 }) => {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -29,12 +32,15 @@ const StockCategoryForm = ({
   const [formData, setFormData] = useState({
     purchaseDate: '',
     productName: '',
-    packQuantity: '',
+    packQuantity: defaultPackQuantity || '',
     unitSize: showUnitSize ? '' : 1,
     totalPrice: '',
     totalQuantity: 0,
     costPerUnit: 0,
-    notes: ''
+    notes: '',
+    assetType: '',
+    transportation: '',
+    loadingUnloading: ''
   });
 
   useEffect(() => {
@@ -71,7 +77,8 @@ const StockCategoryForm = ({
           totalPrice: data.totalPrice ?? data.openingStockAmount ?? '',
           totalQuantity: data.totalQuantity ?? data.openingStockQty ?? 0,
           costPerUnit: data.costPerUnit ?? data.openingRatePerUnit ?? 0,
-          notes: data.notes || ''
+          notes: data.notes || '',
+          assetType: data.assetType || ''
         });
       }
     } catch (error) {
@@ -111,6 +118,9 @@ const StockCategoryForm = ({
     if (!formData.totalPrice || parseFloat(formData.totalPrice) <= 0) {
       newErrors.totalPrice = 'Please enter a valid total price';
     }
+    if (assetTypes && !formData.assetType) {
+      newErrors.assetType = 'Please select asset type';
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -142,6 +152,15 @@ const StockCategoryForm = ({
         minStockLevel: 0,
         notes: formData.notes?.trim() || null
       };
+      if (assetTypes && formData.assetType) {
+        dataToSubmit.assetType = formData.assetType;
+      }
+      if (!isEdit) {
+        const transport = parseFloat(formData.transportation);
+        const loading = parseFloat(formData.loadingUnloading);
+        if (!isNaN(transport) && transport > 0) dataToSubmit.transportation = transport;
+        if (!isNaN(loading) && loading > 0) dataToSubmit.loadingUnloading = loading;
+      }
 
       if (isEdit) {
         await stockAPI.update(id, dataToSubmit);
@@ -203,10 +222,23 @@ const StockCategoryForm = ({
               name="productName"
               value={formData.productName}
               onChange={handleChange}
-              placeholder="e.g., Albendazole"
+              placeholder={assetTypes ? 'e.g., Main Shed, Tractor' : 'e.g., Albendazole'}
               error={errors.productName}
               required
             />
+
+            {assetTypes && (
+              <Select
+                label="Asset Type"
+                name="assetType"
+                value={formData.assetType}
+                onChange={handleChange}
+                options={assetTypes}
+                placeholder="Select asset type"
+                error={errors.assetType}
+                required
+              />
+            )}
 
             <Input
               label="Quantity"
@@ -258,6 +290,37 @@ const StockCategoryForm = ({
               value={formData.costPerUnit}
               disabled
             />
+
+            {!isEdit && (
+              <>
+                <p className="text-sm font-medium text-gray-700 pt-2">Additional expenses (optional)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Input
+                    label="Transportation (Rs.)"
+                    type="number"
+                    name="transportation"
+                    value={formData.transportation}
+                    onChange={handleChange}
+                    placeholder="e.g., 500"
+                    min={0}
+                  />
+                  <Input
+                    label="Loading / Unloading (Rs.)"
+                    type="number"
+                    name="loadingUnloading"
+                    value={formData.loadingUnloading}
+                    onChange={handleChange}
+                    placeholder="e.g., 200"
+                    min={0}
+                  />
+                </div>
+                {((parseFloat(formData.transportation) || 0) + (parseFloat(formData.loadingUnloading) || 0)) > 0 && (
+                  <p className="text-sm text-gray-600">
+                    Total cost to deduct: Rs.{((parseFloat(formData.totalPrice) || 0) + (parseFloat(formData.transportation) || 0) + (parseFloat(formData.loadingUnloading) || 0)).toLocaleString()}
+                  </p>
+                )}
+              </>
+            )}
 
             <Input
               label="Notes (optional)"

@@ -31,8 +31,18 @@ const Capital = () => {
   const [formData, setFormData] = useState({
     amount: '',
     type: '',
-    description: ''
+    description: '',
+    partner1: '',
+    partner2: '',
+    retainedEarnings: '',
+    investmentSubtype: ''
   });
+
+  const investmentSubtypes = [
+    { value: 'Partner1 (Imran Shah)', label: 'Partner1 (Imran Shah)' },
+    { value: 'Partner2 (Raza Abbas)', label: 'Partner2 (Raza Abbas)' },
+    { value: 'Retained Earnings', label: 'Retained Earnings' }
+  ];
   const [errors, setErrors] = useState({});
   const [uploadingId, setUploadingId] = useState(null);
   const [pendingUploadTransactionId, setPendingUploadTransactionId] = useState(null);
@@ -43,6 +53,7 @@ const Capital = () => {
 
   const transactionTypes = [
     { value: 'Additional Investment', label: 'Additional Investment' },
+    { value: 'Investment Withdrawal', label: 'Investment Withdrawal (Deduction)' },
     { value: 'Animal Purchase', label: 'Animal Purchase (Deduction)' },
     { value: 'Stock Purchase', label: 'Stock Purchase (Deduction)' },
     { value: 'Salaries', label: 'Salaries (Deduction)' },
@@ -83,15 +94,41 @@ const Capital = () => {
 
   const validate = () => {
     const newErrors = {};
-    
-    if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      newErrors.amount = 'Please enter a valid amount';
+
+    if (modalType === 'initial') {
+      const p1 = parseFloat(formData.partner1) || 0;
+      const p2 = parseFloat(formData.partner2) || 0;
+      const re = parseFloat(formData.retainedEarnings) || 0;
+      if (p1 + p2 + re <= 0) {
+        newErrors.partner1 = 'Enter at least one amount to set initial capital';
+      }
+    } else {
+      if (!formData.amount || parseFloat(formData.amount) <= 0) {
+        newErrors.amount = 'Please enter a valid amount';
+      }
+      if (!formData.type) {
+        newErrors.type = 'Please select a transaction type';
+      }
+      if (['Additional Investment', 'Investment Withdrawal'].includes(formData.type) && !formData.investmentSubtype) {
+        newErrors.investmentSubtype = formData.type === 'Additional Investment'
+          ? 'Please select who is investing'
+          : 'Please select whose investment to deduct from';
+      }
+      if (formData.type === 'Investment Withdrawal' && formData.investmentSubtype && formData.amount) {
+        const amt = parseFloat(formData.amount);
+        const p1 = capital?.partner1Capital ?? 0;
+        const p2 = capital?.partner2Capital ?? 0;
+        const re = capital?.retainedEarningsCapital ?? 0;
+        let maxWithdraw = 0;
+        if (formData.investmentSubtype === 'Partner1 (Imran Shah)') maxWithdraw = p1;
+        else if (formData.investmentSubtype === 'Partner2 (Raza Abbas)') maxWithdraw = p2;
+        else if (formData.investmentSubtype === 'Retained Earnings') maxWithdraw = re;
+        if (amt > maxWithdraw) {
+          newErrors.amount = `Cannot exceed balance (Rs.${maxWithdraw.toLocaleString()})`;
+        }
+      }
     }
-    
-    if (modalType === 'add' && !formData.type) {
-      newErrors.type = 'Please select a transaction type';
-    }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -103,20 +140,25 @@ const Capital = () => {
     setSubmitting(true);
     try {
       if (modalType === 'initial') {
-        await capitalAPI.setInitial(parseFloat(formData.amount));
+        const partner1 = parseFloat(formData.partner1) || 0;
+        const partner2 = parseFloat(formData.partner2) || 0;
+        const retainedEarnings = parseFloat(formData.retainedEarnings) || 0;
+        await capitalAPI.setInitial({ partner1, partner2, retainedEarnings });
         toast.success('Initial capital set successfully');
       } else {
         // Determine if it's an addition or deduction
         const isAddition = ['Additional Investment', 'Animal Sale', 'Other Income'].includes(formData.type);
         const amount = isAddition ? parseFloat(formData.amount) : -parseFloat(formData.amount);
-        
-        await capitalAPI.update(amount, formData.type, formData.description);
+        const investmentSubtype = ['Additional Investment', 'Investment Withdrawal'].includes(formData.type)
+          ? formData.investmentSubtype
+          : null;
+        await capitalAPI.update(amount, formData.type, formData.description, investmentSubtype);
         toast.success('Capital updated successfully');
       }
-      
+
       fetchCapital();
       setModalOpen(false);
-      setFormData({ amount: '', type: '', description: '' });
+      setFormData({ amount: '', type: '', description: '', partner1: '', partner2: '', retainedEarnings: '', investmentSubtype: '' });
     } catch (error) {
       toast.error(error.message || 'Failed to update capital');
     } finally {
@@ -126,7 +168,7 @@ const Capital = () => {
 
   const openModal = (type) => {
     setModalType(type);
-    setFormData({ amount: '', type: '', description: '' });
+    setFormData({ amount: '', type: '', description: '', partner1: '', partner2: '', retainedEarnings: '', investmentSubtype: '' });
     setErrors({});
     setModalOpen(true);
   };
@@ -199,21 +241,47 @@ const Capital = () => {
 
       {/* Capital Overview */}
       <div className="space-y-6">
-        {/* Total Capital — hero card full width */}
+        {/* Total Capital — hero card full width with subdivisions */}
         <Card className="bg-gradient-to-br from-emerald-500 to-emerald-700 overflow-hidden">
-          <div className="text-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 p-2">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
-                <HiOutlineCurrencyDollar className="w-8 h-8 text-white" />
+          <div className="text-white p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
+                  <HiOutlineCurrencyDollar className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <p className="text-emerald-100 font-medium text-sm uppercase tracking-wide">Total Capital</p>
+                  <p className="text-3xl sm:text-4xl font-bold mt-1">{formatCurrency(capital?.totalCapital)}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-emerald-100 font-medium text-sm uppercase tracking-wide">Total Capital</p>
-                <p className="text-3xl sm:text-4xl font-bold mt-1">{formatCurrency(capital?.totalCapital)}</p>
-              </div>
+              <p className="text-emerald-100/90 text-sm sm:text-base border-t sm:border-t-0 sm:border-l border-white/20 pt-4 sm:pt-0 sm:pl-6">
+                Last updated: {formatDate(capital?.lastUpdated)}
+              </p>
             </div>
-            <p className="text-emerald-100/90 text-sm sm:text-base border-t sm:border-t-0 sm:border-l border-white/20 pt-4 sm:pt-0 sm:pl-6">
-              Last updated: {formatDate(capital?.lastUpdated)}
-            </p>
+            {/* Subdivisions - legacy data without breakdown shows total as Retained Earnings */}
+            {(() => {
+              const p1 = capital?.partner1Capital ?? 0;
+              const p2 = capital?.partner2Capital ?? 0;
+              const re = capital?.retainedEarningsCapital ?? 0;
+              const hasBreakdown = p1 + p2 + re > 0;
+              const displayRe = hasBreakdown ? re : (capital?.totalCapital ?? 0);
+              return (
+                <div className="mt-6 pt-6 border-t border-white/20 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="bg-white/10 rounded-lg px-4 py-3">
+                    <p className="text-emerald-100 text-xs font-medium uppercase tracking-wide">Partner1 (Imran Shah)</p>
+                    <p className="text-xl font-bold mt-1">{formatCurrency(p1)}</p>
+                  </div>
+                  <div className="bg-white/10 rounded-lg px-4 py-3">
+                    <p className="text-emerald-100 text-xs font-medium uppercase tracking-wide">Partner2 (Raza Abbas)</p>
+                    <p className="text-xl font-bold mt-1">{formatCurrency(p2)}</p>
+                  </div>
+                  <div className="bg-white/10 rounded-lg px-4 py-3">
+                    <p className="text-emerald-100 text-xs font-medium uppercase tracking-wide">Retained Earnings</p>
+                    <p className="text-xl font-bold mt-1">{formatCurrency(displayRe)}</p>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </Card>
 
@@ -350,7 +418,12 @@ const Capital = () => {
                     )}
                   </div>
                   <div className="min-w-0">
-                    <p className="font-medium text-gray-900">{transaction.type}</p>
+                    <p className="font-medium text-gray-900">
+                      {transaction.type}
+                      {transaction.investmentSubtype && (
+                        <span className="text-gray-500 font-normal ml-1">({transaction.investmentSubtype})</span>
+                      )}
+                    </p>
                     <p className="text-sm text-gray-500 truncate">{transaction.description}</p>
                   </div>
                 </div>
@@ -404,29 +477,106 @@ const Capital = () => {
         size="md"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            label="Amount"
-            type="number"
-            name="amount"
-            value={formData.amount}
-            onChange={handleChange}
-            placeholder="Enter amount"
-            prefix="Rs."
-            error={errors.amount}
-            required
-          />
+          {modalType === 'initial' ? (
+            <>
+              <Input
+                label="Partner1 (Imran Shah)"
+                type="number"
+                name="partner1"
+                value={formData.partner1}
+                onChange={handleChange}
+                placeholder="Enter amount"
+                prefix="Rs."
+                error={errors.partner1}
+                min={0}
+              />
+              <Input
+                label="Partner2 (Raza Abbas)"
+                type="number"
+                name="partner2"
+                value={formData.partner2}
+                onChange={handleChange}
+                placeholder="Enter amount"
+                prefix="Rs."
+                error={errors.partner2}
+                min={0}
+              />
+              <Input
+                label="Retained Earnings"
+                type="number"
+                name="retainedEarnings"
+                value={formData.retainedEarnings}
+                onChange={handleChange}
+                placeholder="Enter amount"
+                prefix="Rs."
+                error={errors.retainedEarnings}
+                min={0}
+              />
+              <p className="text-sm text-gray-500">
+                Total: {formatCurrency(
+                  (parseFloat(formData.partner1) || 0) +
+                  (parseFloat(formData.partner2) || 0) +
+                  (parseFloat(formData.retainedEarnings) || 0)
+                )}
+              </p>
+            </>
+          ) : (
+            <>
+              <Input
+                label="Amount"
+                type="number"
+                name="amount"
+                value={formData.amount}
+                onChange={handleChange}
+                placeholder="Enter amount"
+                prefix="Rs."
+                error={errors.amount}
+                required
+              />
+            </>
+          )}
 
           {modalType === 'add' && (
-            <Select
-              label="Transaction Type"
-              name="type"
-              value={formData.type}
-              onChange={handleChange}
-              options={transactionTypes}
-              placeholder="Select transaction type"
-              error={errors.type}
-              required
-            />
+            <>
+              <Select
+                label="Transaction Type"
+                name="type"
+                value={formData.type}
+                onChange={handleChange}
+                options={transactionTypes}
+                placeholder="Select transaction type"
+                error={errors.type}
+                required
+              />
+              {(formData.type === 'Additional Investment' || formData.type === 'Investment Withdrawal') && (
+                <Select
+                  label={formData.type === 'Additional Investment' ? 'Investment Type' : 'Deduct From'}
+                  name="investmentSubtype"
+                  value={formData.investmentSubtype}
+                  onChange={handleChange}
+                  options={(() => {
+                    const p1 = capital?.partner1Capital ?? 0;
+                    const p2 = capital?.partner2Capital ?? 0;
+                    const re = capital?.retainedEarningsCapital ?? 0;
+                    const hasSub = p1 + p2 + re > 0;
+                    const legacyRe = !hasSub && (capital?.totalCapital ?? 0) > 0 ? capital.totalCapital : 0;
+                    return investmentSubtypes.map(s => {
+                      let bal = 0;
+                      if (s.value === 'Partner1 (Imran Shah)') bal = p1;
+                      else if (s.value === 'Partner2 (Raza Abbas)') bal = p2;
+                      else if (s.value === 'Retained Earnings') bal = hasSub ? re : legacyRe;
+                      return {
+                        value: s.value,
+                        label: formData.type === 'Investment Withdrawal' ? `${s.label} (Rs.${bal.toLocaleString()})` : s.label
+                      };
+                    });
+                  })()}
+                  placeholder={formData.type === 'Additional Investment' ? 'Select who is investing' : 'Select whose investment to deduct'}
+                  error={errors.investmentSubtype}
+                  required
+                />
+              )}
+            </>
           )}
 
           <Textarea
@@ -447,7 +597,9 @@ const Capital = () => {
               <p className="text-sm font-medium">
                 {['Additional Investment', 'Animal Sale', 'Other Income'].includes(formData.type)
                   ? '↑ This will ADD to your available balance'
-                  : '↓ This will DEDUCT from your available balance'
+                  : formData.type === 'Investment Withdrawal'
+                    ? '↓ This will DEDUCT from the selected partner\'s investment and your available balance'
+                    : '↓ This will DEDUCT from your available balance'
                 }
               </p>
             </div>
