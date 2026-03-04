@@ -452,6 +452,10 @@ const ApplyRecipe = () => {
                           <p className="text-sm text-emerald-600">Total Cost ({dayCount} days)</p>
                           <p className="text-xl font-bold text-emerald-800">{formatCurrency(totalCost)}</p>
                         </div>
+                        <div>
+                          <p className="text-sm text-emerald-600">Cost per Animal (total period)</p>
+                          <p className="text-xl font-bold text-emerald-800">{formatCurrency(costPerAnimalTotal)}</p>
+                        </div>
                       </>
                     )}
                   </div>
