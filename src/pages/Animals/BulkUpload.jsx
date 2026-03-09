@@ -551,17 +551,38 @@ const BulkUpload = () => {
     setShowTotalAmountModal(true);
   };
 
-  // Auto-determine purchase price per animal: total amount ÷ number of animals (equal split)
+  // Allocate purchase price per animal by weight: per kg cost = total / total weight, each animal = per kg × buying weight
   const calculatePricePerAnimal = (validAnimals, totalAmt) => {
     if (!validAnimals || validAnimals.length === 0) return [];
 
-    const count = validAnimals.length;
     const totalAmountNum = parseFloat(totalAmt);
-    const pricePerAnimal = totalAmountNum / count;
+    const totalBuyingWeight = validAnimals.reduce(
+      (sum, a) => sum + (parseFloat(a.buyingWeight) || parseFloat(a.weight) || 0),
+      0
+    );
 
-    return validAnimals.map(animal => ({
+    if (totalBuyingWeight <= 0) {
+      // Fallback: equal split if no weights
+      const pricePerAnimal = totalAmountNum / validAnimals.length;
+      return validAnimals.map(animal => ({
+        ...animal,
+        purchasePrice: parseFloat(pricePerAnimal.toFixed(2))
+      }));
+    }
+
+    const perKgCost = totalAmountNum / totalBuyingWeight;
+    const allocations = validAnimals.map(a => {
+      const w = parseFloat(a.buyingWeight) || parseFloat(a.weight) || 0;
+      return Math.round(perKgCost * w * 100) / 100;
+    });
+    // Fix rounding: ensure sum equals total
+    const sumAlloc = allocations.reduce((s, v) => s + v, 0);
+    const diff = Math.round((totalAmountNum - sumAlloc) * 100) / 100;
+    if (diff !== 0 && allocations.length > 0) allocations[0] += diff;
+
+    return validAnimals.map((animal, i) => ({
       ...animal,
-      purchasePrice: parseFloat(pricePerAnimal.toFixed(2))
+      purchasePrice: allocations[i] ?? 0
     }));
   };
 
@@ -997,7 +1018,7 @@ const BulkUpload = () => {
                 Total Amount Paid for {animalsToUpload.length} Animal{animalsToUpload.length !== 1 ? 's' : ''}
               </h3>
               <p className="text-sm text-gray-600 mb-4">
-                Enter the total (collective) amount you paid for all these animals. The price will be divided equally per animal.
+                Enter the total (collective) amount you paid for all these animals. The price will be allocated by buying weight (same per kg cost for each animal).
               </p>
 
               <div className="mb-6">
@@ -1017,14 +1038,24 @@ const BulkUpload = () => {
                 </div>
               </div>
 
-              {animalsToUpload.length > 0 && totalAmount && parseFloat(totalAmount) > 0 && (
-                <div className="mb-6 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <p className="text-xs text-blue-800 font-medium mb-2">Per-Animal Price (auto-calculated):</p>
-                  <p className="text-sm text-blue-700 font-semibold">
-                    Rs. {(parseFloat(totalAmount) / animalsToUpload.length).toFixed(2)} per animal
-                  </p>
-                </div>
-              )}
+              {animalsToUpload.length > 0 && totalAmount && parseFloat(totalAmount) > 0 && (() => {
+                const totalW = animalsToUpload.reduce((s, a) => s + (parseFloat(a.buyingWeight) || parseFloat(a.weight) || 0), 0);
+                const perKg = totalW > 0 ? parseFloat(totalAmount) / totalW : 0;
+                const sample = animalsToUpload[0];
+                const sampleW = parseFloat(sample?.buyingWeight) || parseFloat(sample?.weight) || 0;
+                const samplePrice = totalW > 0 ? (perKg * sampleW).toFixed(2) : (parseFloat(totalAmount) / animalsToUpload.length).toFixed(2);
+                return (
+                  <div className="mb-6 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <p className="text-xs text-blue-800 font-medium mb-2">Allocation by weight (auto-calculated):</p>
+                    <p className="text-sm text-blue-700 font-semibold">
+                      Rs. {perKg.toFixed(2)} per kg
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      Example: {sampleW} kg → Rs. {samplePrice}
+                    </p>
+                  </div>
+                );
+              })()}
 
               <div className="flex gap-3">
                 <button

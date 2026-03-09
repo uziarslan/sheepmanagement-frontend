@@ -296,15 +296,24 @@ const SellAnimal = () => {
     }
   };
 
-  const allocateTotalSellingPrice = (totalSellingPrice, count) => {
-    // Allocate in "paise" to ensure sums match exactly (2 decimals)
-    const totalPaise = Math.round((Number(totalSellingPrice) || 0) * 100);
-    if (!count || count <= 0) return [];
-    const base = Math.floor(totalPaise / count);
-    const remainder = totalPaise % count;
-    const allocations = new Array(count).fill(base);
-    for (let i = 0; i < remainder; i++) allocations[i] += 1;
-    return allocations.map(paise => paise / 100);
+  // Allocate total selling price by weight: per kg price = total / total weight, each animal = per kg × weight
+  const allocateTotalSellingPriceByWeight = (totalSellingPrice, rows) => {
+    const total = Number(totalSellingPrice) || 0;
+    if (!rows || rows.length === 0) return [];
+    const totalWeight = rows.reduce((sum, r) => sum + (Number(r.weight) || 0), 0);
+    if (totalWeight <= 0) {
+      const perAnimal = total / rows.length;
+      return rows.map(() => Math.round(perAnimal * 100) / 100);
+    }
+    const perKg = total / totalWeight;
+    const allocations = rows.map(r => {
+      const w = Number(r.weight) || 0;
+      return Math.round(perKg * w * 100) / 100;
+    });
+    const sumAlloc = allocations.reduce((s, v) => s + v, 0);
+    const diff = Math.round((total - sumAlloc) * 100) / 100;
+    if (diff !== 0 && allocations.length > 0) allocations[0] += diff;
+    return allocations;
   };
 
   const getBulkCalculated = () => {
@@ -314,8 +323,8 @@ const SellAnimal = () => {
     const sellingCost = Number(bulkSellingCost) || 0;
     const hasTotalSellingPrice = baseTotal > 0 && count > 0;
 
-    // Allocate only base selling price (selling cost is our expense, NOT added to price)
-    const allocations = hasTotalSellingPrice ? allocateTotalSellingPrice(baseTotal, count) : [];
+    // Allocate by weight: per kg same for all, each animal = per kg × weight
+    const allocations = hasTotalSellingPrice ? allocateTotalSellingPriceByWeight(baseTotal, validRows) : [];
     let allocationIdx = 0;
 
     const rows = bulkPreview.map(row => {
@@ -368,7 +377,8 @@ const SellAnimal = () => {
     // Selling cost is our expense - reduces profit (add to total cost for profit calc)
     const ourTotalCost = totalCostSum + sellingCost;
     const totalProfit = hasTotalSellingPrice ? totalSalePrice - ourTotalCost : 0;
-    const perAnimal = count > 0 && baseTotal > 0 ? baseTotal / count : 0;
+    const totalWeight = validRows.reduce((sum, r) => sum + (Number(r.weight) || 0), 0);
+    const perKgPrice = totalWeight > 0 && baseTotal > 0 ? baseTotal / totalWeight : 0;
 
     return {
       rows,
@@ -378,7 +388,8 @@ const SellAnimal = () => {
       sellingCost,
       ourTotalCost,
       totalProfit,
-      perAnimal,
+      perKgPrice,
+      totalWeight,
       validCount: count,
       hasTotalSellingPrice
     };
@@ -767,9 +778,9 @@ const SellAnimal = () => {
                     />
                     {Number(bulkTotalSellingPrice) > 0 && bulkPreview.filter(p => p.status === 'valid').length > 0 && (
                       <p className="text-xs text-gray-500 -mt-2">
-                        Per animal:{" "}
+                        Per kg (allocated by weight):{" "}
                         <span className="font-semibold text-gray-800">
-                          {formatCurrency(getBulkCalculated().perAnimal)}
+                          {formatCurrency(getBulkCalculated().perKgPrice)}
                         </span>
                       </p>
                     )}
@@ -855,7 +866,7 @@ const SellAnimal = () => {
                           <p className="text-sm text-gray-500 mt-1">
                             {calc.validCount} valid animal(s)
                             {bulkTotalSellingPrice && calc.validCount > 0
-                              ? ` • Allocated per animal ≈ ${formatCurrency(calc.perAnimal)}`
+                              ? ` • Per kg: ${formatCurrency(calc.perKgPrice)} (allocated by weight)`
                               : ''}
                           </p>
                         </div>
