@@ -43,6 +43,11 @@ const AnimalForm = () => {
     arrivalDate: '',
     birthDate: '',
     purchasePrice: '',
+    purchaseTransport: '',
+    purchaseMandiExpenses: '',
+    purchaseFuel: '',
+    purchaseFood: '',
+    purchaseHotel: '',
     buyingWeight: '',
     weight: '',
     weightDate: '',
@@ -79,9 +84,15 @@ const AnimalForm = () => {
         const animal = response.data;
         setFormData({
           ...animal,
+          penId: animal.pen?._id || animal.pen || '',
           arrivalDate: animal.arrivalDate?.split('T')[0] || '',
           birthDate: animal.birthDate?.split('T')[0] || '',
-          weightDate: animal.weightDate?.split('T')[0] || ''
+          weightDate: animal.weightDate?.split('T')[0] || '',
+          purchaseTransport: animal.purchaseTransport ?? '',
+          purchaseMandiExpenses: animal.purchaseMandiExpenses ?? '',
+          purchaseFuel: animal.purchaseFuel ?? '',
+          purchaseFood: animal.purchaseFood ?? '',
+          purchaseHotel: animal.purchaseHotel ?? ''
         });
       }
     } catch (error) {
@@ -177,6 +188,13 @@ const AnimalForm = () => {
       if (formData.buyingWeight && parseFloat(formData.buyingWeight) > 0) {
         dataToSubmit.buyingWeight = parseFloat(formData.buyingWeight);
       }
+
+      // Purchasing expenses (optional; send 0 when empty so update can clear them)
+      dataToSubmit.purchaseTransport = Number(formData.purchaseTransport) || 0;
+      dataToSubmit.purchaseMandiExpenses = Number(formData.purchaseMandiExpenses) || 0;
+      dataToSubmit.purchaseFuel = Number(formData.purchaseFuel) || 0;
+      dataToSubmit.purchaseFood = Number(formData.purchaseFood) || 0;
+      dataToSubmit.purchaseHotel = Number(formData.purchaseHotel) || 0;
 
       if (isEdit) {
         await animalAPI.update(id, dataToSubmit);
@@ -342,6 +360,76 @@ const AnimalForm = () => {
                 error={errors.purchasePrice}
                 required
               />
+              <p className="text-sm font-medium text-gray-700 mt-4 mb-2">Purchasing Expenses (optional)</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input
+                  label="Transport"
+                  type="number"
+                  name="purchaseTransport"
+                  value={formData.purchaseTransport}
+                  onChange={handleChange}
+                  placeholder="0"
+                  prefix="Rs."
+                  min={0}
+                />
+                <Input
+                  label="Mandi Expenses"
+                  type="number"
+                  name="purchaseMandiExpenses"
+                  value={formData.purchaseMandiExpenses}
+                  onChange={handleChange}
+                  placeholder="0"
+                  prefix="Rs."
+                  min={0}
+                />
+                <Input
+                  label="Fuel"
+                  type="number"
+                  name="purchaseFuel"
+                  value={formData.purchaseFuel}
+                  onChange={handleChange}
+                  placeholder="0"
+                  prefix="Rs."
+                  min={0}
+                />
+                <Input
+                  label="Food"
+                  type="number"
+                  name="purchaseFood"
+                  value={formData.purchaseFood}
+                  onChange={handleChange}
+                  placeholder="0"
+                  prefix="Rs."
+                  min={0}
+                />
+                <Input
+                  label="Hotel"
+                  type="number"
+                  name="purchaseHotel"
+                  value={formData.purchaseHotel}
+                  onChange={handleChange}
+                  placeholder="0"
+                  prefix="Rs."
+                  min={0}
+                />
+              </div>
+              {(() => {
+                const exp =
+                  (parseFloat(formData.purchaseTransport) || 0) +
+                  (parseFloat(formData.purchaseMandiExpenses) || 0) +
+                  (parseFloat(formData.purchaseFuel) || 0) +
+                  (parseFloat(formData.purchaseFood) || 0) +
+                  (parseFloat(formData.purchaseHotel) || 0);
+                const total = (parseFloat(formData.purchasePrice) || 0) + exp;
+                if (exp > 0) {
+                  return (
+                    <p className="text-sm text-emerald-600 font-medium">
+                      Total cost (price + expenses): Rs. {total.toLocaleString()}
+                    </p>
+                  );
+                }
+                return null;
+              })()}
               <Input
                 label="Arrival Date"
                 type="date"

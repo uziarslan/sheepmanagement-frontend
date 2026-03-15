@@ -86,7 +86,7 @@ const SellAnimal = () => {
 
   const getOurTotalCost = () => {
     if (!selectedAnimal) return 0;
-    const animalCost = (selectedAnimal.purchasePrice || 0) + (selectedAnimal.cost || 0);
+    const animalCost = selectedAnimal.totalPrice ?? (selectedAnimal.purchasePrice || 0) + (selectedAnimal.cost || 0);
     const sellingCost = parseFloat(saleData.sellingCost) || 0;
     return animalCost + sellingCost;
   };
@@ -98,7 +98,7 @@ const SellAnimal = () => {
 
   const getTotalCost = () => {
     if (!selectedAnimal) return 0;
-    return (selectedAnimal.purchasePrice || 0) + (selectedAnimal.cost || 0);
+    return selectedAnimal.totalPrice ?? (selectedAnimal.purchasePrice || 0) + (selectedAnimal.cost || 0);
   };
 
   const handleSinglesaleSubmit = (e) => {
@@ -165,7 +165,7 @@ const SellAnimal = () => {
     return s;
   };
 
-  const getAnimalTotalCost = (animal) => (animal?.purchasePrice || 0) + (animal?.cost || 0);
+  const getAnimalTotalCost = (animal) => animal?.totalPrice ?? (animal?.purchasePrice || 0) + (animal?.cost || 0);
 
   const downloadBulkSaleTemplate = () => {
     try {

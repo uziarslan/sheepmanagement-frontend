@@ -95,7 +95,7 @@ const DeclareAnimalDead = () => {
 
   const calculateTotalCost = (animal) => {
     if (!animal) return 0;
-    return (animal.purchasePrice || 0) + (animal.cost || 0);
+    return animal.totalPrice ?? (animal.purchasePrice || 0) + (animal.cost || 0);
   };
 
   if (loading) {

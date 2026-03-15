@@ -46,6 +46,11 @@ const BulkUpload = () => {
   const [dragActive, setDragActive] = useState(false);
   const [showTotalAmountModal, setShowTotalAmountModal] = useState(false);
   const [totalAmount, setTotalAmount] = useState('');
+  const [purchaseTransport, setPurchaseTransport] = useState('');
+  const [purchaseMandiExpenses, setPurchaseMandiExpenses] = useState('');
+  const [purchaseFuel, setPurchaseFuel] = useState('');
+  const [purchaseFood, setPurchaseFood] = useState('');
+  const [purchaseHotel, setPurchaseHotel] = useState('');
   const [animalsToUpload, setAnimalsToUpload] = useState([]);
 
   const getId = (item) => item?._id ?? item?.id;
@@ -545,9 +550,14 @@ const BulkUpload = () => {
       return;
     }
 
-    // Show modal to collect total amount
+    // Show modal to collect total amount and purchasing expenses
     setAnimalsToUpload(validAnimals);
     setTotalAmount('');
+    setPurchaseTransport('');
+    setPurchaseMandiExpenses('');
+    setPurchaseFuel('');
+    setPurchaseFood('');
+    setPurchaseHotel('');
     setShowTotalAmountModal(true);
   };
 
@@ -586,14 +596,27 @@ const BulkUpload = () => {
     }));
   };
 
-  // Handle submission of total amount
+  // Sum of purchasing expenses for bulk
+  const getPurchaseExpensesTotal = () => {
+    return (
+      (parseFloat(purchaseTransport) || 0) +
+      (parseFloat(purchaseMandiExpenses) || 0) +
+      (parseFloat(purchaseFuel) || 0) +
+      (parseFloat(purchaseFood) || 0) +
+      (parseFloat(purchaseHotel) || 0)
+    );
+  };
+
+  // Handle submission of total amount (total cost = animal cost + expenses; allocate all by weight)
   const handleTotalAmountSubmit = async () => {
     if (!totalAmount || parseFloat(totalAmount) <= 0) {
-      toast.error('Please enter a valid total amount');
+      toast.error('Please enter a valid total amount for the animals');
       return;
     }
 
-    const animalsWithPrice = calculatePricePerAnimal(animalsToUpload, totalAmount);
+    const expensesTotal = getPurchaseExpensesTotal();
+    const totalWithExpenses = parseFloat(totalAmount) + expensesTotal;
+    const animalsWithPrice = calculatePricePerAnimal(animalsToUpload, String(totalWithExpenses));
     
     setUploading(true);
     setUploadErrors([]);
@@ -1012,18 +1035,18 @@ const BulkUpload = () => {
       {/* Total Amount Modal */}
       {showTotalAmountModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <Card className="max-w-md w-full">
+          <Card className="max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Total Amount Paid for {animalsToUpload.length} Animal{animalsToUpload.length !== 1 ? 's' : ''}
+                Total Amount & Purchasing Expenses for {animalsToUpload.length} Animal{animalsToUpload.length !== 1 ? 's' : ''}
               </h3>
               <p className="text-sm text-gray-600 mb-4">
-                Enter the total (collective) amount you paid for all these animals. The price will be allocated by buying weight (same per kg cost for each animal).
+                Enter the total (collective) amount you paid for all these animals, then any purchasing expenses. The combined total will be allocated by buying weight (same per kg cost for each animal).
               </p>
 
-              <div className="mb-6">
+              <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Total Amount (Rs.)
+                  Total Amount for Animals (Rs.)
                 </label>
                 <div className="flex items-center gap-2">
                   <span className="text-lg font-semibold text-gray-600">Rs.</span>
@@ -1038,14 +1061,80 @@ const BulkUpload = () => {
                 </div>
               </div>
 
+              <p className="text-sm font-medium text-gray-700 mb-2">Purchasing Expenses (collective)</p>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Transport</label>
+                  <input
+                    type="number"
+                    value={purchaseTransport}
+                    onChange={(e) => setPurchaseTransport(e.target.value)}
+                    placeholder="0"
+                    min={0}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Mandi Expenses</label>
+                  <input
+                    type="number"
+                    value={purchaseMandiExpenses}
+                    onChange={(e) => setPurchaseMandiExpenses(e.target.value)}
+                    placeholder="0"
+                    min={0}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Fuel</label>
+                  <input
+                    type="number"
+                    value={purchaseFuel}
+                    onChange={(e) => setPurchaseFuel(e.target.value)}
+                    placeholder="0"
+                    min={0}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Food</label>
+                  <input
+                    type="number"
+                    value={purchaseFood}
+                    onChange={(e) => setPurchaseFood(e.target.value)}
+                    placeholder="0"
+                    min={0}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Hotel</label>
+                  <input
+                    type="number"
+                    value={purchaseHotel}
+                    onChange={(e) => setPurchaseHotel(e.target.value)}
+                    placeholder="0"
+                    min={0}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
               {animalsToUpload.length > 0 && totalAmount && parseFloat(totalAmount) > 0 && (() => {
+                const expensesTotal = getPurchaseExpensesTotal();
+                const totalWithExpenses = parseFloat(totalAmount) + expensesTotal;
                 const totalW = animalsToUpload.reduce((s, a) => s + (parseFloat(a.buyingWeight) || parseFloat(a.weight) || 0), 0);
-                const perKg = totalW > 0 ? parseFloat(totalAmount) / totalW : 0;
+                const perKg = totalW > 0 ? totalWithExpenses / totalW : 0;
                 const sample = animalsToUpload[0];
                 const sampleW = parseFloat(sample?.buyingWeight) || parseFloat(sample?.weight) || 0;
-                const samplePrice = totalW > 0 ? (perKg * sampleW).toFixed(2) : (parseFloat(totalAmount) / animalsToUpload.length).toFixed(2);
+                const samplePrice = totalW > 0 ? (perKg * sampleW).toFixed(2) : (totalWithExpenses / animalsToUpload.length).toFixed(2);
                 return (
                   <div className="mb-6 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    {expensesTotal > 0 && (
+                      <p className="text-sm text-blue-800 font-medium mb-1">
+                        Total cost (animals + expenses): Rs. {totalWithExpenses.toLocaleString()}
+                      </p>
+                    )}
                     <p className="text-xs text-blue-800 font-medium mb-2">Allocation by weight (auto-calculated):</p>
                     <p className="text-sm text-blue-700 font-semibold">
                       Rs. {perKg.toFixed(2)} per kg

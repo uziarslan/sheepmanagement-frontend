@@ -419,13 +419,13 @@ const AnimalList = () => {
                   </TableCell>
                   <TableCell>
                     <span className="font-medium text-blue-600">
-                      {formatCurrency((animal.purchasePrice || 0) + (animal.cost || 0))}
+                      {formatCurrency(animal.totalPrice ?? (animal.purchasePrice || 0) + (animal.cost || 0))}
                     </span>
                   </TableCell>
                   <TableCell>
                     <span className="font-medium text-blue-600">
                       {animal.weight > 0 
-                        ? formatCurrency(((animal.purchasePrice || 0) + (animal.cost || 0)) / animal.weight) 
+                        ? formatCurrency((animal.totalPrice ?? (animal.purchasePrice || 0) + (animal.cost || 0)) / animal.weight) 
                         : '-'
                       }
                     </span>
