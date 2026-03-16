@@ -8,7 +8,7 @@ import {
   HiOutlineRefresh
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
-import { healthAPI } from '../../services/mockApi';
+import { healthAPI } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
   PageHeader,

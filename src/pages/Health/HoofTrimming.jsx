@@ -7,7 +7,7 @@ import {
   HiOutlinePencil
 } from 'react-icons/hi';
 import { GiSheep, GiFootprint } from 'react-icons/gi';
-import { animalAPI, employeeAPI, healthAPI } from '../../services/mockApi';
+import { animalAPI, employeeAPI, healthAPI } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
   PageHeader,

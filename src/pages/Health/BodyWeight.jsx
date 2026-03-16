@@ -10,8 +10,8 @@ import {
   HiOutlineExclamationCircle
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
-import * as XLSX from 'xlsx';
-import { animalAPI, healthAPI, penAPI } from '../../services/mockApi';
+import ExcelJS from 'exceljs';
+import { animalAPI, healthAPI, penAPI } from '../../services/api';
 import { formatDate, filterBySearch } from '../../utils/helpers';
 import {
   PageHeader,
@@ -142,7 +142,7 @@ const BodyWeight = () => {
             ...(endISO ? { endDate: endISO } : {}),
             sort: '-date'
           }),
-          { limit: 100, maxPages: 100 }
+          { limit: 100, maxPages: 10 }
         )
       ]);
 
@@ -308,7 +308,7 @@ const BodyWeight = () => {
     return map;
   }, [weightRecords, weekColumns]);
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     if (!filteredAnimals.length) {
       toast.error('No animals to export (check your filters)');
       return;
@@ -336,11 +336,11 @@ const BodyWeight = () => {
       aoa.push(row);
     }
 
-    const sheet = XLSX.utils.aoa_to_sheet(aoa);
-    sheet['!cols'] = aoa[0].map(() => ({ wch: 18 }));
+    const wb = new ExcelJS.Workbook();
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, sheet, 'BodyWeights');
+    const sheet = wb.addWorksheet('BodyWeights');
+    sheet.columns = aoa[0].map(() => ({ width: 18 }));
+    sheet.addRows(aoa);
 
     const instructions = [
       ['Body Weight Import/Export'],
@@ -353,11 +353,20 @@ const BodyWeight = () => {
       [''],
       ['Note: Week columns use the week-start date (Monday). The import will record weight on that date.']
     ];
-    const insSheet = XLSX.utils.aoa_to_sheet(instructions);
-    insSheet['!cols'] = [{ wch: 70 }];
-    XLSX.utils.book_append_sheet(wb, insSheet, 'Instructions');
+    const insSheet = wb.addWorksheet('Instructions');
+    insSheet.getColumn(1).width = 70;
+    insSheet.addRows(instructions);
 
-    XLSX.writeFile(wb, `body_weight_${toISODate(new Date())}.xlsx`);
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `body_weight_${toISODate(new Date())}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
     toast.success('Excel exported');
   };
 
@@ -385,15 +394,29 @@ const BodyWeight = () => {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(buffer);
+      const worksheet = workbook.worksheets[0];
 
-        const rows = XLSX.utils.sheet_to_json(worksheet, { raw: false });
+      // Extract headers from row 1
+      const headers = [];
+      worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colIdx) => {
+        headers[colIdx - 1] = cell.value != null ? String(cell.value).trim() : '';
+      });
+
+      // Build rows array as objects keyed by header (mirrors sheet_to_json)
+      const rows = [];
+      worksheet.eachRow((row, rowNum) => {
+        if (rowNum === 1) return;
+        const obj = {};
+        headers.forEach((h, i) => {
+          const cell = row.getCell(i + 1);
+          obj[h] = cell.value != null ? String(cell.value).trim() : '';
+        });
+        rows.push(obj);
+      });
         if (!rows.length) {
           toast.error('No data found in the Excel file');
           return;
@@ -478,13 +501,12 @@ const BodyWeight = () => {
         } else {
           toast.success(`${finalPreview.length} weight update(s) ready`);
         }
-      } catch (err) {
+    } catch (err) {
+      if (typeof console !== 'undefined' && console.error) {
         console.error(err);
-        toast.error('Failed to parse Excel file. Please check the format.');
       }
-    };
-
-    reader.readAsArrayBuffer(file);
+      toast.error('Failed to parse Excel file. Please check the format.');
+    }
   };
 
   const applyImport = async () => {

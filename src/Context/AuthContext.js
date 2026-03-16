@@ -15,7 +15,9 @@ const AuthProvider = ({ children }) => {
           setUser(userData);
         }
       } catch (error) {
-        console.error("Error fetching user:", error);
+        if (typeof console !== 'undefined' && console.error) {
+          console.error("Error fetching user:", error);
+        }
       } finally {
         setIsLoading(false);
       }

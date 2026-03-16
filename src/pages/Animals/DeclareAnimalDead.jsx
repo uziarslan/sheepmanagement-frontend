@@ -6,7 +6,7 @@ import {
   HiOutlineArrowLeft
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
-import { animalAPI } from '../../services/mockApi';
+import { animalAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/helpers';
 import {
   PageHeader,

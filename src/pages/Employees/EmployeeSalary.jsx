@@ -9,7 +9,7 @@ import {
   HiOutlineCurrencyRupee,
   HiOutlineUserGroup
 } from 'react-icons/hi';
-import { employeeAPI, salaryAPI } from '../../services/mockApi';
+import { employeeAPI, salaryAPI } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
   PageHeader,
@@ -67,8 +67,8 @@ const EmployeeSalary = () => {
       const [empRes, salRes] = await Promise.all([
         employeeAPI.getAll(),
         salaryAPI.getAll({
-          month: new Date().getMonth() + 1,
-          year: new Date().getFullYear(),
+          month: parseInt(month, 10),
+          year: parseInt(year, 10),
           limit: 100 // backend max is 100
         })
       ]);

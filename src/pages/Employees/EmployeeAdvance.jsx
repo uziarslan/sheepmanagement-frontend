@@ -9,7 +9,7 @@ import {
   HiOutlineCash,
   HiOutlineDocumentText
 } from 'react-icons/hi';
-import { employeeAPI, advanceAPI } from '../../services/mockApi';
+import { employeeAPI, advanceAPI } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
   PageHeader,
@@ -118,7 +118,7 @@ const EmployeeAdvance = () => {
 
     // For return type, check if amount exceeds balance
     if (modalType === 'return') {
-      const employee = employees.find(e => e.id === parseInt(formData.employeeId));
+      const employee = employees.find(e => String(e._id || e.id) === String(formData.employeeId));
       if (employee && parseFloat(formData.amount) > employee.advanceBalance) {
         newErrors.amount = `Amount cannot exceed balance (${formatCurrency(employee.advanceBalance)})`;
       }

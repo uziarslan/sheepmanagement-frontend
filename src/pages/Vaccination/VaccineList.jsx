@@ -9,7 +9,7 @@ import {
   HiOutlinePlay,
   HiOutlineShieldCheck
 } from 'react-icons/hi';
-import { vaccinationAPI } from '../../services/mockApi';
+import { vaccinationAPI } from '../../services/api';
 import { formatCurrency, filterBySearch } from '../../utils/helpers';
 import {
   PageHeader,

@@ -7,7 +7,7 @@ import {
   HiOutlineTrash,
   HiOutlineShieldCheck
 } from 'react-icons/hi';
-import { stockAPI, vaccinationAPI } from '../../services/mockApi';
+import { stockAPI, vaccinationAPI } from '../../services/api';
 import { groupStocksByNameAndRate } from '../../utils/stockUtils';
 import { formatCurrency } from '../../utils/helpers';
 import {

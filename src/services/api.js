@@ -816,8 +816,25 @@ export const feedAPI = {
       };
       delete transformedData.recipeId;
       delete transformedData.penId;
-      
+
       const response = await axiosInstance.post('/feed/applications', transformedData);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  // P3-09: Apply recipe over a date range in a single backend call
+  applyRecipeRange: async (data) => {
+    try {
+      const transformedData = {
+        recipe: data.recipeId || data.recipe,
+        pen: data.penId || data.pen,
+        dateStart: data.dateStart,
+        dateEnd: data.dateEnd,
+        notes: data.notes || null
+      };
+      const response = await axiosInstance.post('/feed/applications/range', transformedData);
       return handleResponse(response);
     } catch (error) {
       return handleError(error);
@@ -868,15 +885,6 @@ export const capitalAPI = {
   getSummary: async () => {
     try {
       const response = await axiosInstance.get('/capital/summary');
-      return handleResponse(response);
-    } catch (error) {
-      return handleError(error);
-    }
-  },
-
-  setInitial: async ({ partner1 = 0, partner2 = 0, retainedEarnings = 0 }) => {
-    try {
-      const response = await axiosInstance.post('/capital/initialize', { partner1, partner2, retainedEarnings });
       return handleResponse(response);
     } catch (error) {
       return handleError(error);
@@ -976,18 +984,12 @@ export const userAPI = {
 
 // ============ AUTH API ============
 export const authAPI = {
+  // P5-04: Token storage is handled exclusively by authService.js (AuthContext source of truth)
+  // api.js authAPI methods do NOT write to localStorage — they just make the HTTP call.
   login: async (email, password) => {
     try {
       const response = await axiosInstance.post('/auth/login', { email, password });
-      const data = handleResponse(response);
-      
-      // Store tokens
-      if (data.data?.tokens) {
-        localStorage.setItem('token', data.data.tokens.accessToken);
-        localStorage.setItem('refreshToken', data.data.tokens.refreshToken);
-      }
-      
-      return data;
+      return handleResponse(response);
     } catch (error) {
       return handleError(error);
     }
@@ -999,15 +1001,7 @@ export const authAPI = {
         ...userData,
         confirmPassword: userData.password
       });
-      const data = handleResponse(response);
-      
-      // Store tokens
-      if (data.data?.tokens) {
-        localStorage.setItem('token', data.data.tokens.accessToken);
-        localStorage.setItem('refreshToken', data.data.tokens.refreshToken);
-      }
-      
-      return data;
+      return handleResponse(response);
     } catch (error) {
       return handleError(error);
     }
@@ -1045,19 +1039,9 @@ export const authAPI = {
       if (!refreshToken) {
         throw new Error('No refresh token');
       }
-      
       const response = await axiosInstance.post('/auth/refresh-token', { refreshToken });
-      const data = handleResponse(response);
-      
-      if (data.data) {
-        localStorage.setItem('token', data.data.accessToken);
-        localStorage.setItem('refreshToken', data.data.refreshToken);
-      }
-      
-      return data;
+      return handleResponse(response);
     } catch (error) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
       return handleError(error);
     }
   },

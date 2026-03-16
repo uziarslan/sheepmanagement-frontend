@@ -6,7 +6,7 @@ import {
   HiOutlineCalendar,
   HiOutlineShieldCheck
 } from 'react-icons/hi';
-import { vaccinationAPI, penAPI } from '../../services/mockApi';
+import { vaccinationAPI, penAPI } from '../../services/api';
 import { formatCurrency, formatDate, filterBySearch } from '../../utils/helpers';
 import {
   PageHeader,

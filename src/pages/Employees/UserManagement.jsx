@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { HiOutlineUserGroup, HiOutlineUserAdd, HiOutlineShieldCheck, HiOutlineKey } from 'react-icons/hi';
-import { employeeAPI, userAPI } from '../../services/mockApi';
+import { employeeAPI, userAPI } from '../../services/api';
 import {
   PageHeader,
   Card,

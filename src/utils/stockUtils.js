@@ -39,7 +39,10 @@ export const groupStocksByNameAndRate = (items) => {
     const name = (item.productName || '').trim().toLowerCase();
     // Multiply by 100 and round to avoid floating-point key collisions
     const rate = Math.round(getRate(item) * 100);
-    const key = `${name}||${rate}`;
+    // F-73 FIX: include category in key so products with same name+rate but
+    // different categories (e.g. Feeding vs Medication) are not merged.
+    const category = (item.category || '').trim().toLowerCase();
+    const key = `${name}||${rate}||${category}`;
 
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(item);

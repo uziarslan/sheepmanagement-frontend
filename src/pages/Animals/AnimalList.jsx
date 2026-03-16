@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import {
@@ -13,9 +13,9 @@ import {
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
 import { useAuth } from '../../Context/AuthContext';
-import { animalAPI, penAPI } from '../../services/mockApi';
+import { animalAPI, penAPI } from '../../services/api';
 import { formatCurrency, getStatusColor } from '../../utils/helpers';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import {
   PageHeader,
   Card,
@@ -56,12 +56,7 @@ const AnimalList = () => {
   const [deleteModal, setDeleteModal] = useState({ open: false, animal: null });
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const fetchData = async (overrides = {}) => {
+  const fetchData = useCallback(async (overrides = {}) => {
     try {
       setLoading(true);
 
@@ -93,7 +88,13 @@ const AnimalList = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, limit, search, filters]);
+
+  // Initial load
+  useEffect(() => {
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleDelete = async () => {
     if (!deleteModal.animal) return;
@@ -139,13 +140,14 @@ const AnimalList = () => {
     // Debounced fetch happens in effect below
   };
 
-  // Debounce search input to avoid calling API on every keystroke
+  // Debounce search input — fetchData is in useCallback so it always has fresh filter state
   useEffect(() => {
-    const delay = 500; // ms
     const timer = setTimeout(() => {
       fetchData({ page: 1 });
-    }, delay);
+    }, 500);
     return () => clearTimeout(timer);
+    // fetchData is excluded from deps intentionally: we only want to debounce on search
+    // changes; filter/page changes are handled by direct fetchData calls in their handlers
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
@@ -200,14 +202,25 @@ const AnimalList = () => {
         ]);
       }
 
-      const sheet = XLSX.utils.aoa_to_sheet(aoa);
-      sheet['!cols'] = aoa[0].map(() => ({ wch: 18 }));
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, sheet, 'Animals');
-      XLSX.writeFile(wb, `animals_${new Date().toISOString().slice(0,10)}.xlsx`);
+      const wb = new ExcelJS.Workbook();
+      const sheet = wb.addWorksheet('Animals');
+      sheet.columns = aoa[0].map(() => ({ width: 18 }));
+      sheet.addRows(aoa);
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `animals_${new Date().toISOString().slice(0,10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
       toast.success(`Exported ${animalsAll.length} animals`);
     } catch (err) {
-      console.error('Export failed', err);
+      if (typeof console !== 'undefined' && console.error) {
+        console.error('Export failed', err);
+      }
       toast.error(err.message || 'Failed to export animals');
     }
   };

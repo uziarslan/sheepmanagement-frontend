@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import {
@@ -8,8 +8,8 @@ import {
   HiOutlineDownload
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
-import * as XLSX from 'xlsx';
-import { animalAPI } from '../../services/mockApi';
+import ExcelJS from 'exceljs';
+import { animalAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/helpers';
 import {
   PageHeader,
@@ -167,15 +167,12 @@ const SellAnimal = () => {
 
   const getAnimalTotalCost = (animal) => animal?.totalPrice ?? (animal?.purchasePrice || 0) + (animal?.cost || 0);
 
-  const downloadBulkSaleTemplate = () => {
+  const downloadBulkSaleTemplate = async () => {
     try {
-      const ws = XLSX.utils.aoa_to_sheet([
-        ['TagId'],
-        ['SHP-001']
-      ]);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'BulkSale');
-      const data = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('BulkSale');
+      ws.addRows([['TagId'], ['SHP-001']]);
+      const data = await wb.xlsx.writeBuffer();
 
       const blob = new Blob([data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -224,14 +221,16 @@ const SellAnimal = () => {
           .map(line => line.split(',').map(cell => cell.trim()));
       } else {
         const buffer = await file.arrayBuffer();
-        const wb = XLSX.read(buffer, { type: 'array' });
-        const sheetName = wb.SheetNames?.[0];
-        const ws = sheetName ? wb.Sheets[sheetName] : null;
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(buffer);
+        const ws = wb.worksheets[0];
         if (!ws) {
           toast.error('Invalid Excel file');
           return;
         }
-        rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        ws.eachRow({ includeEmpty: false }, (row) => {
+          rows.push(row.values.slice(1).map(v => (v == null ? '' : String(v))));
+        });
       }
 
       const rawTagIds = extractTagIdsFromRows(rows);
@@ -316,7 +315,7 @@ const SellAnimal = () => {
     return allocations;
   };
 
-  const getBulkCalculated = () => {
+  const bulkCalculated = useMemo(() => {
     const validRows = bulkPreview.filter(r => r.status === 'valid');
     const count = validRows.length;
     const baseTotal = Number(bulkTotalSellingPrice) || 0;
@@ -393,7 +392,11 @@ const SellAnimal = () => {
       validCount: count,
       hasTotalSellingPrice
     };
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulkPreview, bulkTotalSellingPrice, bulkSellingCost]);
+
+  // Convenience wrapper so existing call-sites work unchanged
+  const getBulkCalculated = () => bulkCalculated;
 
   const handleBulkSaleSubmit = async () => {
     if (bulkPreview.length === 0) {

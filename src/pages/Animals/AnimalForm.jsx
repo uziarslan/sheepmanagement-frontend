@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { HiOutlineArrowLeft } from 'react-icons/hi';
-import { animalAPI, penAPI } from '../../services/mockApi';
+import { animalAPI, penAPI } from '../../services/api';
 import {
   PageHeader,
   Card,
@@ -73,7 +73,9 @@ const AnimalForm = () => {
         setPens(response.data);
       }
     } catch (error) {
-      console.error('Error fetching pens:', error);
+      if (typeof console !== 'undefined' && console.error) {
+        console.error('Error fetching pens:', error);
+      }
     }
   };
 

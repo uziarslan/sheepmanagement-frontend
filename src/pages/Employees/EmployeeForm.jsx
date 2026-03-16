@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { HiOutlineArrowLeft } from 'react-icons/hi';
-import { employeeAPI } from '../../services/mockApi';
+import { employeeAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/helpers';
 import {
   PageHeader,

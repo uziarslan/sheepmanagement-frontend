@@ -9,7 +9,7 @@ import {
   HiOutlinePlay,
   HiOutlineBeaker
 } from 'react-icons/hi';
-import { feedAPI } from '../../services/mockApi';
+import { feedAPI } from '../../services/api';
 import { formatCurrency, filterBySearch } from '../../utils/helpers';
 import {
   PageHeader,

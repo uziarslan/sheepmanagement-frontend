@@ -7,8 +7,8 @@ import {
   HiOutlineX
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
-import { animalAPI, penAPI, stockAPI, employeeAPI, healthAPI } from '../../services/mockApi';
-import { groupStocksByNameAndRate, deductStockFifo } from '../../utils/stockUtils';
+import { animalAPI, penAPI, stockAPI, employeeAPI, healthAPI } from '../../services/api';
+import { groupStocksByNameAndRate } from '../../utils/stockUtils';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
   PageHeader,
@@ -145,8 +145,7 @@ const Deworming = () => {
       unit: medicine.unit,
       rate: medicine.openingRatePerUnit || 0,
       quantity: qty,
-      total: qty * (medicine.openingRatePerUnit || 0),
-      _stockItem: medicine  // keep for FIFO deduction
+      total: qty * (medicine.openingRatePerUnit || 0)
     };
 
     setFormData(prev => ({
@@ -235,24 +234,10 @@ const Deworming = () => {
       };
 
       const response = await healthAPI.createDeworming(dewormingData);
-      
+
       if (response.success) {
         toast.success(`Deworming recorded for ${formData.animalIds.length} animal(s)`);
         setDewormings(prev => [response.data, ...prev]);
-
-        // FIFO stock deduction
-        try {
-          await Promise.all(
-            formData.medicines.map(m =>
-              m._stockItem
-                ? deductStockFifo(stockAPI, m._stockItem, m.quantity, 'Deworming')
-                : Promise.resolve()
-            )
-          );
-        } catch (deductErr) {
-          console.error('Stock deduction failed:', deductErr);
-        }
-
         closeModal();
       }
     } catch (error) {

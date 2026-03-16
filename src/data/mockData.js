@@ -1,5 +1,29 @@
-// Mock Data for Sheep Farm Management System
-// This file contains dummy data that simulates backend responses
+/**
+ * DEPRECATED: Import directly from '../../constants/farmConstants' instead.
+ * This file re-exports the enum constants to preserve backwards compatibility
+ * while the import paths are being migrated (P3-08 / F-71).
+ *
+ * The mock data arrays (mockAnimals, mockPens etc.) are test fixtures only
+ * and must NOT be used in production UI rendering.
+ */
+export {
+  animalTypes,
+  breedTypes,
+  animalSubcategories,
+  sexOptions,
+  countries,
+  animalStatuses,
+  penTypes,
+  stockCategories,
+  stockUnits,
+  departments,
+  designations,
+  banks,
+  treatmentTypes,
+  diagnosisTypes,
+  dewormingTypes,
+  hoofDiagnosis,
+} from '../constants/farmConstants';
 
 export const mockAnimals = [
   {
@@ -374,53 +398,5 @@ export const mockUser = {
   createdAt: "2025-01-01T10:00:00Z"
 };
 
-// Dropdown options
-export const animalTypes = ["Sheep", "Goat"];
-export const breedTypes = ["Dumba", "Kajli", "Beetal", "Teddy", "Barbari", "Nachi", "Rakhshani"];
-export const animalSubcategories = ["Fattening", "Production", "Breeding", "Heifer"];
-export const sexOptions = ["Male", "Female"];
-export const countries = ["Pakistan", "Afghanistan", "Iran", "Australia"];
-export const animalStatuses = ["Active", "Quarantine", "Sold", "Dead", "Returned", "Slaughtered"];
-
-export const penTypes = ["Fattening", "Production", "Quarantine", "Heifer", "Dry", "Close-up"];
-
-export const stockCategories = ["Feeding", "Medication", "Farm Accessories", "Semen", "Seeds", "Fertilizers", "Pesticides"];
-export const stockUnits = ["kg", "gm", "ltr", "ml", "nos"];
-
-export const departments = ["Operations", "Health", "Finance", "Administration"];
-export const designations = ["Farm Manager", "Veterinarian", "Farm Worker", "Accountant", "Supervisor", "Security"];
-export const banks = ["HBL", "MCB", "UBL", "Allied Bank", "Bank Alfalah", "Meezan Bank", "Faysal Bank"];
-
-// Health & Veterinary options
-export const treatmentTypes = ["Treatment", "Protocol"];
-export const diagnosisTypes = [
-  "Intrauterine",
-  "Dystokia",
-  "Wound",
-  "Theleria",
-  "Mastitis",
-  "Pneumonia",
-  "Diarrhea",
-  "Bloat",
-  "Foot Rot",
-  "Pink Eye",
-  "Parasitic Infection",
-  "Respiratory Infection",
-  "Fever",
-  "Other"
-];
-export const dewormingTypes = ["Albendazole", "Levamisole", "Thunder", "Ivermectin", "Fenbendazole"];
-export const hoofDiagnosis = [
-  "Foot Rot",
-  "Laminitis",
-  "White Line Disease",
-  "Sole Ulcer",
-  "Heel Erosion",
-  "Interdigital Dermatitis",
-  "Digital Dermatitis",
-  "Overgrown Hooves",
-  "Cracked Hooves",
-  "Abscess",
-  "Routine Trimming",
-  "Other"
-];
+// All enum constants are now imported from '../constants/farmConstants' above.
+// See that file for the authoritative source of all dropdown option arrays.

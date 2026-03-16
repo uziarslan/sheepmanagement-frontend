@@ -9,8 +9,8 @@ import {
   HiOutlineCheck
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
-import { animalAPI, stockAPI, healthAPI } from '../../services/mockApi';
-import { groupStocksByNameAndRate, deductStockFifo } from '../../utils/stockUtils';
+import { animalAPI, stockAPI, healthAPI } from '../../services/api';
+import { groupStocksByNameAndRate } from '../../utils/stockUtils';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
   PageHeader,
@@ -144,8 +144,7 @@ const Treatment = () => {
       rate: medicine.openingRatePerUnit || 0,
       unit: selectedMedicine.unit,
       quantity: qty,
-      total: qty * (medicine.openingRatePerUnit || 0),
-      _stockItem: medicine  // keep for FIFO deduction
+      total: qty * (medicine.openingRatePerUnit || 0)
     };
 
     setFormData(prev => ({
@@ -221,19 +220,6 @@ const Treatment = () => {
         if (response.success) {
           setTreatments(prev => [response.data, ...prev]);
           toast.success('Treatment recorded successfully');
-
-          // FIFO stock deduction
-          try {
-            await Promise.all(
-              formData.medicines.map(m =>
-                m._stockItem
-                  ? deductStockFifo(stockAPI, m._stockItem, m.quantity, 'Treatment')
-                  : Promise.resolve()
-              )
-            );
-          } catch (deductErr) {
-            console.error('Stock deduction failed:', deductErr);
-          }
         }
       }
       
@@ -330,7 +316,7 @@ const Treatment = () => {
   };
 
   const filteredTreatments = treatments.filter(t =>
-    t.tagId?.toLowerCase().includes(search.toLowerCase()) ||
+    t.animalTagId?.toLowerCase().includes(search.toLowerCase()) ||
     t.animalName?.toLowerCase().includes(search.toLowerCase()) ||
     t.diagnosis?.toLowerCase().includes(search.toLowerCase())
   );
@@ -432,7 +418,7 @@ const Treatment = () => {
                         <GiSheep className="w-4 h-4 text-emerald-600" />
                       </div>
                       <div>
-                        <p className="font-medium text-sm">{treatment.tagId}</p>
+                        <p className="font-medium text-sm">{treatment.animalTagId}</p>
                         <p className="text-xs text-gray-500">{treatment.animalName}</p>
                       </div>
                     </div>

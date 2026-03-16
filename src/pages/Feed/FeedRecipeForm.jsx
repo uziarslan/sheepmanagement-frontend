@@ -7,7 +7,7 @@ import {
   HiOutlineTrash,
   HiOutlineBeaker
 } from 'react-icons/hi';
-import { penAPI, stockAPI, feedAPI } from '../../services/mockApi';
+import { penAPI, stockAPI, feedAPI } from '../../services/api';
 import { groupStocksByNameAndRate } from '../../utils/stockUtils';
 import { formatCurrency } from '../../utils/helpers';
 import {

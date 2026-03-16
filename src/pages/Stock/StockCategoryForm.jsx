@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { HiOutlineArrowLeft } from 'react-icons/hi';
-import { stockAPI } from '../../services/mockApi';
+import { stockAPI } from '../../services/api';
 import {
   PageHeader,
   Card,

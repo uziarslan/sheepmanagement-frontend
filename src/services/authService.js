@@ -3,9 +3,11 @@ import axiosInstance from "./axiosInstance";
 // 👇 Util to notify extension
 const notifyExtensionWithToken = (token) => {
   try {
-    window.postMessage({ type: "FROM_WEB_TO_EXTENSION", token }, "*");
+    window.postMessage({ type: "FROM_WEB_TO_EXTENSION", token }, window.location.origin);
   } catch (err) {
-    console.warn("Failed to notify extension:", err);
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn("Failed to notify extension:", err);
+    }
   }
 };
 
@@ -56,7 +58,9 @@ const getUser = async () => {
       const response = await axiosInstance.get("/auth/me");
       return response.data?.data || response.data;
     } catch (error) {
-      console.error("Error fetching user:", error);
+      if (typeof console !== 'undefined' && console.error) {
+        console.error("Error fetching user:", error);
+      }
       localStorage.removeItem("token");
       localStorage.removeItem("refreshToken");
       return null;

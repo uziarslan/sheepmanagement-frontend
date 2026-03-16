@@ -8,7 +8,7 @@ import {
   HiOutlineViewGrid
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
-import { penAPI } from '../../services/mockApi';
+import { penAPI } from '../../services/api';
 import { getPenTypeColor, filterBySearch } from '../../utils/helpers';
 import {
   PageHeader,

@@ -8,7 +8,7 @@ import {
   HiOutlineFilter,
   HiOutlineCube
 } from 'react-icons/hi';
-import { stockAPI } from '../../services/mockApi';
+import { stockAPI } from '../../services/api';
 import { formatCurrency, getStockCategoryColor, filterBySearch } from '../../utils/helpers';
 import {
   PageHeader,

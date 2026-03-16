@@ -10,7 +10,7 @@ import {
   HiOutlineX
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
-import { animalAPI, penAPI } from '../../services/mockApi';
+import { animalAPI, penAPI } from '../../services/api';
 import { filterBySearch } from '../../utils/helpers';
 import {
   PageHeader,
@@ -69,7 +69,9 @@ const MoveToPen = () => {
       setAnimals((animalsAll || []).filter(a => a.status === 'Active'));
       setPens(pensAll || []);
     } catch (error) {
-      console.error('fetchData failed', error);
+      if (typeof console !== 'undefined' && console.error) {
+        console.error('fetchData failed', error);
+      }
       toast.error('Failed to fetch data');
     } finally {
       setLoading(false);

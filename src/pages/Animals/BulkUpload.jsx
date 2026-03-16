@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import {
   HiOutlineArrowLeft,
   HiOutlineCloudUpload,
@@ -12,7 +12,7 @@ import {
   HiOutlineX,
   HiOutlineExclamationCircle
 } from 'react-icons/hi';
-import { animalAPI, penAPI } from '../../services/mockApi';
+import { animalAPI, penAPI } from '../../services/api';
 import {
   PageHeader,
   Card,
@@ -67,7 +67,9 @@ const BulkUpload = () => {
 
       try {
         const pensRes = await penAPI.getAll({ limit: 100 });
-        console.log('Pens API response:', pensRes);
+        if (typeof console !== 'undefined' && console.log) {
+          console.log('Pens API response:', pensRes);
+        }
         if (pensRes.success && pensRes.data) {
           pensData = Array.isArray(pensRes.data) ? pensRes.data : [];
         } else if (Array.isArray(pensRes)) {
@@ -76,9 +78,13 @@ const BulkUpload = () => {
         } else if (pensRes && pensRes.data && Array.isArray(pensRes.data)) {
           pensData = pensRes.data;
         }
-        console.log('Parsed pens data:', pensData);
+        if (typeof console !== 'undefined' && console.log) {
+          console.log('Parsed pens data:', pensData);
+        }
       } catch (penError) {
-        console.error('Error fetching pens:', penError);
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('Error fetching pens:', penError);
+        }
         toast.error('Failed to load pens. Please refresh the page.');
       }
 
@@ -92,7 +98,9 @@ const BulkUpload = () => {
           animalsData = animalsRes.data;
         }
       } catch (animalError) {
-        console.error('Error fetching animals:', animalError);
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('Error fetching animals:', animalError);
+        }
       }
 
       setPens(pensData);
@@ -102,7 +110,9 @@ const BulkUpload = () => {
         toast.error('No pens found. Please create pens first before bulk uploading animals.');
       }
     } catch (error) {
-      console.error('Error fetching data:', error);
+      if (typeof console !== 'undefined' && console.error) {
+        console.error('Error fetching data:', error);
+      }
       toast.error('Failed to load data. Please refresh the page.');
     } finally {
       setLoading(false);
@@ -115,7 +125,7 @@ const BulkUpload = () => {
     { key: 'name', label: 'Animal Name', required: true, example: 'Sheru' },
     { key: 'animalType', label: 'Animal Type', required: true, example: 'Sheep', options: animalTypes },
     { key: 'breedType', label: 'Breed Type', required: true, example: 'Dumba', options: breedTypes },
-    { key: 'subcategory', label: 'Subcategory', required: false, example: 'Fattening', options: animalSubcategories },
+    { key: 'subcategory', label: 'Subcategory', required: true, example: 'Fattening', options: animalSubcategories },
     { key: 'sex', label: 'Sex', required: true, example: 'Male', options: sexOptions },
     { key: 'purchasedFrom', label: 'Purchased From', required: false, example: 'Pakistan', options: countries },
     { key: 'arrivalDate', label: 'Arrival Date', required: true, example: '2025-01-15' },
@@ -127,20 +137,18 @@ const BulkUpload = () => {
   ];
 
   // Download template Excel file
-  const downloadTemplate = () => {
+  const downloadTemplate = async () => {
     const worksheetData = [
       templateColumns.map(col => col.label),
       templateColumns.map(col => col.example)
     ];
 
-    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-    
-    // Set column widths
-    worksheet['!cols'] = templateColumns.map(() => ({ wch: 20 }));
-    
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Animals');
-    
+    const workbook = new ExcelJS.Workbook();
+
+    const worksheet = workbook.addWorksheet('Animals');
+    worksheet.columns = templateColumns.map(() => ({ width: 20 }));
+    worksheet.addRows(worksheetData);
+
     // Add instructions sheet
     const instructionsData = [
       ['Animal Bulk Upload Instructions'],
@@ -169,12 +177,21 @@ const BulkUpload = () => {
       ['- Tag ID must be unique (not already in the system)'],
       ['- Each Tag ID can only appear once in the upload file']
     ];
-    
-    const instructionsSheet = XLSX.utils.aoa_to_sheet(instructionsData);
-    instructionsSheet['!cols'] = [{ wch: 60 }];
-    XLSX.utils.book_append_sheet(workbook, instructionsSheet, 'Instructions');
-    
-    XLSX.writeFile(workbook, 'animal_bulk_upload_template.xlsx');
+
+    const instructionsSheet = workbook.addWorksheet('Instructions');
+    instructionsSheet.getColumn(1).width = 60;
+    instructionsSheet.addRows(instructionsData);
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'animal_bulk_upload_template.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
     toast.success('Template downloaded successfully');
   };
 
@@ -350,17 +367,31 @@ const BulkUpload = () => {
   const parseExcelFile = (file) => {
     const reader = new FileReader();
     
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(e.target.result);
+
         // Get first sheet
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        
-        // Convert to JSON
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false });
+        const worksheet = workbook.worksheets[0];
+
+        // Extract headers from row 1
+        const headers = [];
+        worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colIdx) => {
+          headers[colIdx - 1] = cell.value != null ? String(cell.value).trim() : '';
+        });
+
+        // Convert to JSON (array of objects keyed by header, mirroring sheet_to_json behaviour)
+        const jsonData = [];
+        worksheet.eachRow((row, rowNum) => {
+          if (rowNum === 1) return;
+          const obj = {};
+          headers.forEach((h, i) => {
+            const cell = row.getCell(i + 1);
+            obj[h] = cell.value != null ? String(cell.value).trim() : '';
+          });
+          jsonData.push(obj);
+        });
         
         if (jsonData.length === 0) {
           toast.error('The Excel file is empty. Please add animal data and try again.');
@@ -398,7 +429,9 @@ const BulkUpload = () => {
           toast.success(`${validatedData.length} animal(s) parsed successfully. Please select a pen for each animal.`);
         }
       } catch (error) {
-        console.error('Error parsing Excel:', error);
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('Error parsing Excel:', error);
+        }
         toast.error('Failed to read the Excel file. Please make sure it\'s a valid .xlsx or .xls file.');
       }
     };
@@ -531,6 +564,27 @@ const BulkUpload = () => {
       errors.push(`Duplicate Tag IDs found: ${[...new Set(duplicates)].join(', ')}`);
     }
 
+    // Check pen capacity constraints
+    const validAnimals = parsedData.filter(r => r.isValid && r.penId);
+    const penCounts = {};
+    validAnimals.forEach(animal => {
+      penCounts[animal.penId] = (penCounts[animal.penId] || 0) + 1;
+    });
+
+    for (const [penId, count] of Object.entries(penCounts)) {
+      const pen = pens.find(p => getId(p) === penId);
+      if (pen) {
+        // Get current animal count in this pen
+        const currentAnimalsInPen = existingAnimals.filter(a => getId(a.pen || a.penId) === penId && a.status === 'Active').length;
+        const totalCapacity = pen.capacity || 0;
+        const projectedCount = currentAnimalsInPen + count;
+        if (projectedCount > totalCapacity) {
+          const penName = pen.name || penId;
+          errors.push(`Pen "${penName}" would exceed capacity. Current: ${currentAnimalsInPen}, Adding: ${count}, Capacity: ${totalCapacity}`);
+        }
+      }
+    }
+
     return errors;
   };
 
@@ -617,67 +671,69 @@ const BulkUpload = () => {
     const expensesTotal = getPurchaseExpensesTotal();
     const totalWithExpenses = parseFloat(totalAmount) + expensesTotal;
     const animalsWithPrice = calculatePricePerAnimal(animalsToUpload, String(totalWithExpenses));
-    
+
     setUploading(true);
     setUploadErrors([]);
     setShowTotalAmountModal(false);
-    let successCount = 0;
-    const failedAnimals = [];
 
     // Fields the backend create endpoint accepts (avoids "is not allowed" validation errors)
     const allowedCreateFields = [
       'tagId', 'electronicId', 'name', 'animalType', 'breedType', 'subcategory',
       'sex', 'purchasedFrom', 'arrivalDate', 'birthDate', 'purchasePrice',
+      'purchaseTransport', 'purchaseMandiExpenses', 'purchaseFuel', 'purchaseFood', 'purchaseHotel',
       'buyingWeight', 'weight', 'weightDate', 'pen', 'status', 'pedigreeInfo',
       'sire', 'dam', 'notes'
     ];
 
-    for (const animal of animalsWithPrice) {
-      try {
-        const { rowIndex, isValid, errors: rowErrors, penId, ...rest } = animal;
-        // Only send allowed fields to avoid backend validation errors
-        const payload = {};
-        allowedCreateFields.forEach((key) => {
-          const val = key === 'pen' ? (penId || rest.pen) : rest[key];
-          if (val !== undefined) payload[key] = val;
-        });
-        // Ensure dates are Date objects for Joi
-        if (payload.arrivalDate) payload.arrivalDate = new Date(payload.arrivalDate);
-        if (payload.birthDate) payload.birthDate = payload.birthDate ? new Date(payload.birthDate) : null;
-        if (payload.weightDate) payload.weightDate = payload.weightDate ? new Date(payload.weightDate) : undefined;
-
-        const response = await animalAPI.create(payload);
-        if (response.success) {
-          successCount++;
-        } else {
-          failedAnimals.push({
-            tagId: animal.tagId,
-            error: response.error || 'Unknown error'
-          });
+    // Prepare all animals with proper payload structure
+    const animalsPayload = animalsWithPrice.map(animal => {
+      const { rowIndex, isValid, errors: rowErrors, penId, ...rest } = animal;
+      // Only send allowed fields to avoid backend validation errors
+      const payload = {};
+      allowedCreateFields.forEach((key) => {
+        if (key === 'pen') {
+          const pen = penId || rest.pen;
+          if (pen !== undefined) payload[key] = pen;
+        } else if (key.startsWith('purchase') && key !== 'purchasePrice' && key !== 'purchasedFrom') {
+          // Add all expense fields from state
+          if (key === 'purchaseTransport') payload[key] = parseFloat(purchaseTransport) || 0;
+          else if (key === 'purchaseMandiExpenses') payload[key] = parseFloat(purchaseMandiExpenses) || 0;
+          else if (key === 'purchaseFuel') payload[key] = parseFloat(purchaseFuel) || 0;
+          else if (key === 'purchaseFood') payload[key] = parseFloat(purchaseFood) || 0;
+          else if (key === 'purchaseHotel') payload[key] = parseFloat(purchaseHotel) || 0;
+        } else if (rest[key] !== undefined) {
+          payload[key] = rest[key];
         }
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || error.message || 'Server error';
-        failedAnimals.push({
-          tagId: animal.tagId,
-          error: errorMsg
-        });
-        console.error('Error creating animal:', error);
+      });
+      // Ensure dates are Date objects for Joi
+      if (payload.arrivalDate) payload.arrivalDate = new Date(payload.arrivalDate);
+      if (payload.birthDate) payload.birthDate = payload.birthDate ? new Date(payload.birthDate) : null;
+      if (payload.weightDate) payload.weightDate = payload.weightDate ? new Date(payload.weightDate) : undefined;
+
+      return payload;
+    });
+
+    try {
+      const response = await animalAPI.bulkCreate(animalsPayload);
+      if (response.success) {
+        toast.success(`Successfully added ${animalsPayload.length} animal(s)!`);
+        navigate('/dashboard/animals');
+      } else {
+        const errorMsg = response.error || response.message || 'Failed to upload animals';
+        setUploadErrors([errorMsg]);
+        toast.error(errorMsg);
       }
-    }
-
-    setUploading(false);
-
-    if (failedAnimals.length === 0) {
-      toast.success(`Successfully added ${successCount} animal(s)!`);
-      navigate('/dashboard/animals');
-    } else {
-      const errorMessages = failedAnimals.map(f => `${f.tagId}: ${f.error}`);
-      setUploadErrors([
-        `${successCount} animal(s) added successfully.`,
-        `${failedAnimals.length} animal(s) failed to upload:`,
-        ...errorMessages
-      ]);
-      toast.error(`${failedAnimals.length} animal(s) failed to upload. See details below.`);
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || 'Server error';
+      setUploadErrors([errorMsg]);
+      toast.error(`Failed to upload animals: ${errorMsg}`);
+      if (process.env.NODE_ENV !== 'production') {
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('Error bulk creating animals:', error);
+        }
+      }
+    } finally {
+      setUploading(false);
     }
   };
 

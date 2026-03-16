@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import {
   HiOutlineArrowLeft,
   HiOutlineCloudUpload,
@@ -11,7 +11,7 @@ import {
   HiOutlineExclamation,
   HiOutlineX
 } from 'react-icons/hi';
-import { stockAPI, capitalAPI } from '../../services/mockApi';
+import { stockAPI, capitalAPI } from '../../services/api';
 import {
   PageHeader,
   Card,
@@ -56,17 +56,17 @@ const StockCategoryBulkUpload = ({
     { key: 'notes', label: 'Notes', required: false, example: 'Optional notes' }
   ];
 
-  const downloadTemplate = () => {
+  const downloadTemplate = async () => {
     const worksheetData = [
       templateColumns.map(col => col.label),
       templateColumns.map(col => col.example)
     ];
 
-    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-    worksheet['!cols'] = templateColumns.map(() => ({ wch: 22 }));
+    const workbook = new ExcelJS.Workbook();
 
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Stock');
+    const worksheet = workbook.addWorksheet('Stock');
+    worksheet.columns = templateColumns.map(() => ({ width: 22 }));
+    worksheet.addRows(worksheetData);
 
     const instructionsData = [
       [`${title} Bulk Upload Instructions`],
@@ -78,11 +78,20 @@ const StockCategoryBulkUpload = ({
       ['Numbers only for Quantity, Unit Size, and Total Price']
     ];
 
-    const instructionsSheet = XLSX.utils.aoa_to_sheet(instructionsData);
-    instructionsSheet['!cols'] = [{ wch: 70 }];
-    XLSX.utils.book_append_sheet(workbook, instructionsSheet, 'Instructions');
+    const instructionsSheet = workbook.addWorksheet('Instructions');
+    instructionsSheet.getColumn(1).width = 70;
+    instructionsSheet.addRows(instructionsData);
 
-    XLSX.writeFile(workbook, `${title.toLowerCase().replace(/\s+/g, '_')}_bulk_upload_template.xlsx`);
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${title.toLowerCase().replace(/\s+/g, '_')}_bulk_upload_template.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
     toast.success('Template downloaded successfully');
   };
 
@@ -158,13 +167,29 @@ const StockCategoryBulkUpload = ({
   const parseExcelFile = (file) => {
     const reader = new FileReader();
 
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false });
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(e.target.result);
+        const worksheet = workbook.worksheets[0];
+
+        // Extract headers from row 1
+        const headers = [];
+        worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colIdx) => {
+          headers[colIdx - 1] = cell.value != null ? String(cell.value).trim() : '';
+        });
+
+        // Build jsonData keyed by header (mirrors sheet_to_json behaviour)
+        const jsonData = [];
+        worksheet.eachRow((row, rowNum) => {
+          if (rowNum === 1) return;
+          const obj = {};
+          headers.forEach((h, i) => {
+            const cell = row.getCell(i + 1);
+            obj[h] = cell.value != null ? String(cell.value).trim() : '';
+          });
+          jsonData.push(obj);
+        });
 
         if (jsonData.length === 0) {
           toast.error('The Excel file is empty. Please add data and try again.');
@@ -250,13 +275,30 @@ const StockCategoryBulkUpload = ({
       return;
     }
 
+    // Check for duplicate product names
+    const productNames = parsedData.map(r => r.productName?.toLowerCase().trim()).filter(Boolean);
+    const duplicateNames = productNames.filter((name, i) => productNames.indexOf(name) !== i);
+    if (duplicateNames.length > 0) {
+      toast.error(`Duplicate product names found: ${[...new Set(duplicateNames)].join(', ')}`);
+      return;
+    }
+
     setUploading(true);
     setUploadErrors([]);
     let successCount = 0;
     const failedItems = [];
 
+    // Calculate transport/loading per item
+    const transport = parseFloat(transportation) || 0;
+    const loading = parseFloat(loadingUnloading) || 0;
+    const totalExpensePerItem = parsedData.length > 0 ? (transport + loading) / parsedData.length : 0;
+
     for (const item of parsedData) {
       try {
+        // Distribute transport/loading cost in the price
+        const itemTotalPrice = item.totalPrice + totalExpensePerItem;
+        const itemCostPerUnit = item.totalQuantity > 0 ? itemTotalPrice / item.totalQuantity : item.costPerUnit;
+
         const dataToSubmit = {
           productName: item.productName,
           category,
@@ -265,10 +307,10 @@ const StockCategoryBulkUpload = ({
           packQuantity: item.packQuantity,
           unitSize: showUnitSize ? item.unitSize : 1,
           totalQuantity: item.totalQuantity,
-          totalPrice: item.totalPrice,
-          costPerUnit: item.costPerUnit,
+          totalPrice: itemTotalPrice,
+          costPerUnit: itemCostPerUnit,
           openingStockQty: item.totalQuantity,
-          openingRatePerUnit: item.costPerUnit,
+          openingRatePerUnit: itemCostPerUnit,
           notes: item.notes || null
         };
 
@@ -286,21 +328,6 @@ const StockCategoryBulkUpload = ({
     setUploading(false);
 
     if (failedItems.length === 0) {
-      const transport = parseFloat(transportation) || 0;
-      const loading = parseFloat(loadingUnloading) || 0;
-      if (transport > 0 || loading > 0) {
-        try {
-          const totalExpense = transport + loading;
-          await capitalAPI.update(
-            -totalExpense,
-            'Stock Purchase',
-            `Bulk stock purchase - Transportation: Rs.${transport.toLocaleString()}${loading > 0 ? `, Loading/Unloading: Rs.${loading.toLocaleString()}` : ''}`
-          );
-        } catch (capErr) {
-          console.error('Failed to deduct transport/loading from capital:', capErr);
-          toast.error('Stock added but failed to record transport/loading expense. Please add manually.');
-        }
-      }
       toast.success(`Successfully added ${successCount} item(s)!`);
       navigate(`/dashboard/stock/${category.toLowerCase().replace(/\s+/g, '-')}`);
     } else {
@@ -311,6 +338,11 @@ const StockCategoryBulkUpload = ({
         ...errorMessages
       ]);
       toast.error(`${failedItems.length} item(s) failed to upload. See details below.`);
+      if (process.env.NODE_ENV !== 'production') {
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('Stock upload errors:', failedItems);
+        }
+      }
     }
   };
 

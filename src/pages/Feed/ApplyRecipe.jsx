@@ -9,7 +9,7 @@ import {
   HiOutlineCalendar
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
-import { feedAPI, penAPI } from '../../services/mockApi';
+import { feedAPI, penAPI } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
   PageHeader,
@@ -160,50 +160,66 @@ const ApplyRecipe = () => {
     e.preventDefault();
     if (!validate()) return;
 
-    const datesToApply = getDatesToApply();
     const recipeIdKey = String(formData.recipeId).trim();
     const penIdKey = String(formData.penId).trim();
     const pen = pens.find(p => String(getId(p)) === String(penIdKey));
 
     setApplying(true);
     try {
-      const successApps = [];
-      const failedDates = [];
+      let successApps = [];
+      let failedDates = [];
 
-      for (const date of datesToApply) {
-        try {
-          const applicationData = {
-            recipe: recipeIdKey,
-            pen: penIdKey,
-            date,
-            notes: formData.notes || null
-          };
-          const response = await feedAPI.applyRecipe(applicationData);
-          if (response.success) {
-            successApps.push(response.data);
-          } else {
-            failedDates.push({ date, error: response.message || 'Unknown error' });
-          }
-        } catch (err) {
-          failedDates.push({ date, error: err.message || 'Failed' });
+      if (formData.applyMode === 'range') {
+        // P3-09: Use single backend call for date ranges instead of N sequential calls
+        const response = await feedAPI.applyRecipeRange({
+          recipe: recipeIdKey,
+          pen: penIdKey,
+          dateStart: formData.dateStart,
+          dateEnd: formData.dateEnd,
+          notes: formData.notes || null
+        });
+        if (response.success && response.data) {
+          successApps = response.data.succeeded || [];
+          failedDates = response.data.failed || [];
+        } else {
+          throw new Error(response.message || 'Failed to apply recipe range');
+        }
+      } else {
+        // Single date — existing single-application path
+        const applicationData = {
+          recipe: recipeIdKey,
+          pen: penIdKey,
+          date: formData.date,
+          notes: formData.notes || null
+        };
+        const response = await feedAPI.applyRecipe(applicationData);
+        if (response.success) {
+          successApps = [response.data];
+        } else {
+          throw new Error(response.message || 'Failed to apply recipe');
         }
       }
 
+      const totalDays = formData.applyMode === 'range'
+        ? (Math.ceil((new Date(formData.dateEnd) - new Date(formData.dateStart)) / (24 * 60 * 60 * 1000)) + 1)
+        : 1;
+
       if (successApps.length > 0) {
-        setApplications(prev => [...successApps, ...prev]);
-        if (datesToApply.length > 1) {
+        if (totalDays > 1) {
           await fetchData(); // Refresh to get full list with proper ordering
+        } else {
+          setApplications(prev => [...successApps, ...prev]);
         }
         const penName = pen?.name || 'shed';
-        if (successApps.length === datesToApply.length) {
+        if (successApps.length === totalDays) {
           toast.success(
-            datesToApply.length === 1
+            totalDays === 1
               ? `Recipe applied to ${penName} successfully`
               : `Recipe applied to ${penName} for ${successApps.length} days successfully`
           );
         } else {
           toast.success(
-            `Recipe applied for ${successApps.length} of ${datesToApply.length} days. ${failedDates.length} failed.`
+            `Recipe applied for ${successApps.length} of ${totalDays} days. ${failedDates.length} failed.`
           );
           failedDates.forEach(({ date, error }) => toast.error(`${date}: ${error}`));
         }

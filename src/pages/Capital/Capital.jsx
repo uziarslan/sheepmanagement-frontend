@@ -9,8 +9,9 @@ import {
   HiOutlineDocumentAdd,
   HiOutlineExternalLink
 } from 'react-icons/hi';
-import { capitalAPI } from '../../services/mockApi';
+import { capitalAPI } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
+import { PARTNERS, PARTNER_OPTIONS } from '../../constants';
 import {
   PageHeader,
   Card,
@@ -39,8 +40,7 @@ const Capital = () => {
   });
 
   const investmentSubtypes = [
-    { value: 'Partner1 (Imran Shah)', label: 'Partner1 (Imran Shah)' },
-    { value: 'Partner2 (Raza Abbas)', label: 'Partner2 (Raza Abbas)' },
+    ...PARTNER_OPTIONS,
     { value: 'Retained Earnings', label: 'Retained Earnings' }
   ];
   const [errors, setErrors] = useState({});
@@ -120,8 +120,8 @@ const Capital = () => {
         const p2 = capital?.partner2Capital ?? 0;
         const re = capital?.retainedEarningsCapital ?? 0;
         let maxWithdraw = 0;
-        if (formData.investmentSubtype === 'Partner1 (Imran Shah)') maxWithdraw = p1;
-        else if (formData.investmentSubtype === 'Partner2 (Raza Abbas)') maxWithdraw = p2;
+        if (formData.investmentSubtype === PARTNERS.PARTNER_1) maxWithdraw = p1;
+        else if (formData.investmentSubtype === PARTNERS.PARTNER_2) maxWithdraw = p2;
         else if (formData.investmentSubtype === 'Retained Earnings') maxWithdraw = re;
         if (amt > maxWithdraw) {
           newErrors.amount = `Cannot exceed balance (Rs.${maxWithdraw.toLocaleString()})`;
@@ -562,8 +562,8 @@ const Capital = () => {
                     const legacyRe = !hasSub && (capital?.totalCapital ?? 0) > 0 ? capital.totalCapital : 0;
                     return investmentSubtypes.map(s => {
                       let bal = 0;
-                      if (s.value === 'Partner1 (Imran Shah)') bal = p1;
-                      else if (s.value === 'Partner2 (Raza Abbas)') bal = p2;
+                      if (s.value === PARTNERS.PARTNER_1) bal = p1;
+                      else if (s.value === PARTNERS.PARTNER_2) bal = p2;
                       else if (s.value === 'Retained Earnings') bal = hasSub ? re : legacyRe;
                       return {
                         value: s.value,

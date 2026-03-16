@@ -11,7 +11,7 @@ import {
   HiOutlineArrowRight
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
-import { dashboardAPI } from '../../services/mockApi';
+import { dashboardAPI } from '../../services/api';
 import { formatCurrency, formatNumber } from '../../utils/helpers';
 import Card from '../../components/common/Card';
 import { PageLoader } from '../../components/common/Spinner';

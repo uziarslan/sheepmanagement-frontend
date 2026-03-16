@@ -6,7 +6,7 @@ import {
   HiOutlineFilter
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
-import { animalAPI, healthAPI } from '../../services/mockApi';
+import { animalAPI, healthAPI } from '../../services/api';
 import { formatDate, filterBySearch } from '../../utils/helpers';
 import {
   PageHeader,

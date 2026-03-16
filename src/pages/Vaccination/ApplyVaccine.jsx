@@ -6,7 +6,7 @@ import {
   HiOutlinePlay,
   HiOutlineShieldCheck
 } from 'react-icons/hi';
-import { vaccinationAPI, penAPI, animalAPI } from '../../services/mockApi';
+import { vaccinationAPI, penAPI, animalAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/helpers';
 import {
   PageHeader,
@@ -88,7 +88,9 @@ const ApplyVaccine = () => {
       const response = await animalAPI.getAll({ pen: penId, status: 'Active' });
       if (response.success) setAnimals(response.data);
     } catch (error) {
-      console.error('Failed to fetch pen animals', error);
+      if (typeof console !== 'undefined' && console.error) {
+        console.error('Failed to fetch pen animals', error);
+      }
     }
   };
 
@@ -97,7 +99,9 @@ const ApplyVaccine = () => {
       const response = await animalAPI.getAll({ status: 'Active' });
       if (response.success) setAnimals(response.data);
     } catch (error) {
-      console.error('Failed to fetch animals', error);
+      if (typeof console !== 'undefined' && console.error) {
+        console.error('Failed to fetch animals', error);
+      }
     }
   };
 

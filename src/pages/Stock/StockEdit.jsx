@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { stockAPI } from '../../services/mockApi';
+import { stockAPI } from '../../services/api';
 import { PageLoader } from '../../components/common/Spinner';
 import StockMedicationForm from './StockMedicationForm';
 import StockFeedingForm from './StockFeedingForm';

@@ -9,7 +9,7 @@ import {
   HiOutlineDocumentText,
   HiOutlineUser
 } from 'react-icons/hi';
-import { liabilityAPI } from '../../services/mockApi';
+import { liabilityAPI } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
   PageHeader,

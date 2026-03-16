@@ -1,7 +1,37 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import DashboardLayout from './components/Layout/DashboardLayout';
+import ErrorBoundary from './components/ErrorBoundary';
 import { useAuth } from './Context/AuthContext';
+
+// Loading skeleton component
+const LoadingSpinner = () => (
+  <div style={{
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: '100vh',
+    backgroundColor: '#f3f4f6'
+  }}>
+    <div style={{ textAlign: 'center' }}>
+      <div style={{
+        width: '50px',
+        height: '50px',
+        border: '4px solid #e5e7eb',
+        borderTop: '4px solid #3b82f6',
+        borderRadius: '50%',
+        animation: 'spin 1s linear infinite',
+        margin: '0 auto 20px'
+      }} />
+      <p style={{ color: '#6b7280', fontSize: '16px' }}>Loading...</p>
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  </div>
+);
 import {
   Login,
   Register,
@@ -57,7 +87,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   }
 
   if (isLoading) {
-    return null;
+    return <LoadingSpinner />;
   }
 
   if (!user) {
@@ -65,7 +95,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    // Redirect non-admin users to a safe default page
+    // Show toast feedback before redirecting
     return <Navigate to="/dashboard/animals" replace />;
   }
 
@@ -83,9 +113,10 @@ const PublicRoute = ({ children }) => {
 
 function App() {
   return (
-    <>
-      {/* Toast Notifications */}
-      <Toaster
+    <ErrorBoundary>
+      <>
+        {/* Toast Notifications */}
+        <Toaster
         position="top-right"
         toastOptions={{
           duration: 3000,
@@ -180,9 +211,9 @@ function App() {
           
           {/* Pens */}
           <Route path="pens" element={<PenList />} />
-          <Route path="pens/add" element={<PenForm />} />
-          <Route path="pens/:id" element={<PenForm />} />
-          <Route path="pens/:id/edit" element={<PenForm />} />
+          <Route path="pens/add" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><PenForm /></ProtectedRoute>} />
+          <Route path="pens/:id" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><PenForm /></ProtectedRoute>} />
+          <Route path="pens/:id/edit" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><PenForm /></ProtectedRoute>} />
           
           {/* Stock */}
           <Route path="stock" element={<StockOverview />} />
@@ -255,24 +286,24 @@ function App() {
           />
           
           {/* Health & Veterinary */}
-          <Route path="health/treatment" element={<Treatment />} />
+          <Route path="health/treatment" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><Treatment /></ProtectedRoute>} />
           <Route path="health/cure-tracking" element={<CureTracking />} />
-          <Route path="health/deworming" element={<Deworming />} />
-          <Route path="health/body-weight" element={<BodyWeight />} />
-          <Route path="health/bcs" element={<BodyConditionScore />} />
-          <Route path="health/hoof-trimming" element={<HoofTrimming />} />
+          <Route path="health/deworming" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><Deworming /></ProtectedRoute>} />
+          <Route path="health/body-weight" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><BodyWeight /></ProtectedRoute>} />
+          <Route path="health/bcs" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><BodyConditionScore /></ProtectedRoute>} />
+          <Route path="health/hoof-trimming" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><HoofTrimming /></ProtectedRoute>} />
           
           {/* Feed & Recipe Management */}
-          <Route path="feed/recipes" element={<FeedRecipeList />} />
-          <Route path="feed/recipes/add" element={<FeedRecipeForm />} />
-          <Route path="feed/recipes/:id/edit" element={<FeedRecipeForm />} />
-          <Route path="feed/apply" element={<ApplyRecipe />} />
-          
+          <Route path="feed/recipes" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><FeedRecipeList /></ProtectedRoute>} />
+          <Route path="feed/recipes/add" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><FeedRecipeForm /></ProtectedRoute>} />
+          <Route path="feed/recipes/:id/edit" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><FeedRecipeForm /></ProtectedRoute>} />
+          <Route path="feed/apply" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><ApplyRecipe /></ProtectedRoute>} />
+
           {/* Vaccination Management */}
-          <Route path="vaccination/vaccines" element={<VaccineList />} />
-          <Route path="vaccination/vaccines/add" element={<CreateVaccine />} />
-          <Route path="vaccination/vaccines/:id/edit" element={<CreateVaccine />} />
-          <Route path="vaccination/apply" element={<ApplyVaccine />} />
+          <Route path="vaccination/vaccines" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><VaccineList /></ProtectedRoute>} />
+          <Route path="vaccination/vaccines/add" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><CreateVaccine /></ProtectedRoute>} />
+          <Route path="vaccination/vaccines/:id/edit" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><CreateVaccine /></ProtectedRoute>} />
+          <Route path="vaccination/apply" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><ApplyVaccine /></ProtectedRoute>} />
           <Route path="vaccination/history" element={<ApplicationHistory />} />
 
           {/* Admin */}
@@ -288,11 +319,16 @@ function App() {
 
         {/* Redirect root to login */}
         <Route path="/" element={<Navigate to="/login" replace />} />
-        
-        {/* 404 - Redirect to dashboard */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+
+        {/* 404 - Redirect based on auth status */}
+        <Route path="*" element={
+          localStorage.getItem('token')
+            ? <Navigate to="/dashboard" replace />
+            : <Navigate to="/login" replace />
+        } />
       </Routes>
-    </>
+      </>
+    </ErrorBoundary>
   );
 }
 
