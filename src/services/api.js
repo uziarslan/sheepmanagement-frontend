@@ -145,6 +145,21 @@ export const animalAPI = {
     }
   },
 
+  getByTagIds: async (tagIds = []) => {
+    try {
+      const response = await axiosInstance.post('/animals/by-tagids', { tagIds });
+      const result = handleResponse(response);
+      if (result.data && Array.isArray(result.data)) {
+        result.data = result.data
+          .map((a) => transformAnimalFromBackend(a))
+          .filter(Boolean);
+      }
+      return result;
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
   declareDead: async (animalId, deathData) => {
     try {
       const response = await axiosInstance.put(`/animals/${animalId}/declare-dead`, deathData);

@@ -33,10 +33,13 @@ import { hoofDiagnosis } from '../../data/mockData';
 const HoofTrimming = () => {
   const [hoofRecords, setHoofRecords] = useState([]);
   const [animals, setAnimals] = useState([]);
+  const [searchedAnimals, setSearchedAnimals] = useState([]);
+  const [animalSearchLoading, setAnimalSearchLoading] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
+  const [animalSearch, setAnimalSearch] = useState('');
   
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -71,10 +74,45 @@ const HoofTrimming = () => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const q = animalSearch.trim();
+    // If empty, fall back to the initially-loaded list
+    if (!q) {
+      setSearchedAnimals([]);
+      setAnimalSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const run = async () => {
+      setAnimalSearchLoading(true);
+      try {
+        const res = await animalAPI.getAll({ limit: 100, sort: 'tagId', search: q });
+        if (cancelled) return;
+        if (res.success) {
+          const list = Array.isArray(res.data) ? res.data : [];
+          setSearchedAnimals(list.filter(a => a.status === 'Active'));
+        } else {
+          setSearchedAnimals([]);
+        }
+      } catch (e) {
+        if (!cancelled) setSearchedAnimals([]);
+      } finally {
+        if (!cancelled) setAnimalSearchLoading(false);
+      }
+    };
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [animalSearch]);
+
   const fetchData = async () => {
     try {
       const [animalsRes, employeesRes, hoofRes] = await Promise.all([
-        animalAPI.getAll(),
+        // Backend caps limit at 100; default is 10 which feels "random" in dropdowns.
+        animalAPI.getAll({ limit: 100, sort: 'tagId' }),
         employeeAPI.getAll(),
         healthAPI.getHoofRecords()
       ]);
@@ -204,6 +242,7 @@ const HoofTrimming = () => {
   };
 
   const openModal = (record = null) => {
+    setAnimalSearch('');
     if (record) {
       setIsEdit(true);
       setEditId(getId(record));
@@ -259,6 +298,7 @@ const HoofTrimming = () => {
     setModalOpen(false);
     setIsEdit(false);
     setEditId(null);
+    setAnimalSearch('');
     setFormData({
       animalId: '',
       date: new Date().toISOString().split('T')[0],
@@ -281,6 +321,11 @@ const HoofTrimming = () => {
     r.animalName?.toLowerCase().includes(search.toLowerCase()) ||
     r.diagnosis?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const animalOptionsSource = animalSearch.trim() ? searchedAnimals : animals;
+  const filteredAnimals = animalOptionsSource
+    .filter(a => a.status === 'Active')
+    .sort((a, b) => String(a.tagId || '').localeCompare(String(b.tagId || '')));
 
   const hoofLabels = {
     frontLeft: 'Front Left',
@@ -471,19 +516,26 @@ const HoofTrimming = () => {
       >
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Select
-              label="Animal (Tag ID)"
-              name="animalId"
-              value={formData.animalId}
-              onChange={handleChange}
-              options={animals.map(a => ({
-                value: getId(a),
-                label: `${a.tagId} - ${a.name}`
-              }))}
-              placeholder="Select animal"
-              error={errors.animalId}
-              required
-            />
+            <div className="space-y-2">
+              <SearchInput
+                value={animalSearch}
+                onChange={setAnimalSearch}
+                placeholder={animalSearchLoading ? 'Searching…' : 'Search Tag ID / name / EID...'}
+              />
+              <Select
+                label="Animal (Tag ID)"
+                name="animalId"
+                value={formData.animalId}
+                onChange={handleChange}
+                options={filteredAnimals.map(a => ({
+                  value: getId(a),
+                  label: `${a.tagId} - ${a.name || ''}`.trim()
+                }))}
+                placeholder={filteredAnimals.length === 0 ? 'No matching animals' : 'Select animal'}
+                error={errors.animalId}
+                required
+              />
+            </div>
             <Input
               label="Date"
               type="date"

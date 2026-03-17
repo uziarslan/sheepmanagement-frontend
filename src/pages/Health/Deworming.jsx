@@ -34,6 +34,10 @@ import { dewormingTypes } from '../../data/mockData';
 const Deworming = () => {
   const [dewormings, setDewormings] = useState([]);
   const [animals, setAnimals] = useState([]);
+  const [penAnimals, setPenAnimals] = useState([]);
+  const [animalSearch, setAnimalSearch] = useState('');
+  const [searchedAnimals, setSearchedAnimals] = useState([]);
+  const [animalSearchLoading, setAnimalSearchLoading] = useState(false);
   const [pens, setPens] = useState([]);
   const [medicines, setMedicines] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -79,10 +83,42 @@ const Deworming = () => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const q = animalSearch.trim();
+    if (!q) {
+      setSearchedAnimals([]);
+      setAnimalSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const run = async () => {
+      setAnimalSearchLoading(true);
+      try {
+        const res = await animalAPI.getAll({ limit: 100, sort: 'tagId', search: q });
+        if (cancelled) return;
+        if (res.success) {
+          const list = Array.isArray(res.data) ? res.data : [];
+          setSearchedAnimals(list.filter(a => a.status === 'Active'));
+        } else {
+          setSearchedAnimals([]);
+        }
+      } catch (e) {
+        if (!cancelled) setSearchedAnimals([]);
+      } finally {
+        if (!cancelled) setAnimalSearchLoading(false);
+      }
+    };
+    run();
+
+    return () => { cancelled = true; };
+  }, [animalSearch]);
+
   const fetchData = async () => {
     try {
       const [animalsRes, pensRes, stocksRes, employeesRes, dewormingsRes] = await Promise.all([
-        animalAPI.getAll(),
+        // Backend caps limit at 100; for pen-specific selection we fetch by pen below
+        animalAPI.getAll({ limit: 100 }),
         penAPI.getAll({ limit: 100 }),
         stockAPI.getAll(),
         employeeAPI.getAll(),
@@ -104,6 +140,28 @@ const Deworming = () => {
     }
   };
 
+  const loadPenAnimals = async (penId) => {
+    if (!penId) {
+      setPenAnimals([]);
+      return;
+    }
+    try {
+      const res = await animalAPI.getByPen(penId);
+      if (res.success) {
+        const list = Array.isArray(res.data) ? res.data : [];
+        const active = list.filter(a => a.status === 'Active');
+        setPenAnimals(active);
+        setFormData(prev => ({ ...prev, animalIds: active.map(a => getId(a)).filter(Boolean) }));
+      } else {
+        setPenAnimals([]);
+        setFormData(prev => ({ ...prev, animalIds: [] }));
+      }
+    } catch (err) {
+      setPenAnimals([]);
+      setFormData(prev => ({ ...prev, animalIds: [] }));
+    }
+  };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -111,8 +169,7 @@ const Deworming = () => {
 
     // Auto-select all animals in pen when pen changes
     if (name === 'penId' && value && formData.scope === 'Shed') {
-      const penAnimals = animals.filter(a => String(getAnimalPenId(a)) === String(value));
-      setFormData(prev => ({ ...prev, animalIds: penAnimals.map(a => getId(a)) }));
+      loadPenAnimals(value);
     }
   };
 
@@ -170,6 +227,15 @@ const Deworming = () => {
         ? prev.animalIds.filter(id => id !== animalId)
         : [...prev.animalIds, animalId]
     }));
+  };
+
+  const handleSelectAllAnimals = () => {
+    const allIds = eligibleAnimals.map(a => getId(a)).filter(Boolean);
+    setFormData(prev => ({ ...prev, animalIds: allIds }));
+  };
+
+  const handleUnselectAllAnimals = () => {
+    setFormData(prev => ({ ...prev, animalIds: [] }));
   };
 
   const validate = () => {
@@ -274,6 +340,10 @@ const Deworming = () => {
       medicines: [],
       comments: ''
     });
+    setPenAnimals([]);
+    setAnimalSearch('');
+    setSearchedAnimals([]);
+    setAnimalSearchLoading(false);
     setErrors({});
     setModalOpen(true);
   };
@@ -290,6 +360,10 @@ const Deworming = () => {
       medicines: [],
       comments: ''
     });
+    setPenAnimals([]);
+    setAnimalSearch('');
+    setSearchedAnimals([]);
+    setAnimalSearchLoading(false);
     setErrors({});
   };
 
@@ -302,9 +376,13 @@ const Deworming = () => {
   const totalMedicineAmount = formData.medicines.reduce((sum, m) => sum + m.total, 0);
 
   // Filter animals by pen if scope is Shed (use _id/pen for API data)
-  const eligibleAnimals = formData.scope === 'Shed' && formData.penId
-    ? animals.filter(a => String(getAnimalPenId(a)) === String(formData.penId))
-    : animals;
+  const animalOptionsSource = animalSearch.trim()
+    ? searchedAnimals
+    : (formData.scope === 'Shed' ? penAnimals : animals);
+
+  const eligibleAnimals = formData.scope === 'Shed'
+    ? (formData.penId ? animalOptionsSource : [])
+    : animalOptionsSource;
 
   if (loading) {
     return <PageLoader />;
@@ -518,6 +596,35 @@ const Deworming = () => {
               <label className="text-sm font-medium text-gray-700">
                 Animals {formData.animalIds.length > 0 && `(${formData.animalIds.length} selected)`}
               </label>
+              {eligibleAnimals.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleSelectAllAnimals}
+                    disabled={formData.animalIds.length === eligibleAnimals.length}
+                  >
+                    Select all
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleUnselectAllAnimals}
+                    disabled={formData.animalIds.length === 0}
+                  >
+                    Unselect all
+                  </Button>
+                </div>
+              )}
+            </div>
+            <div className="mb-2">
+              <SearchInput
+                value={animalSearch}
+                onChange={setAnimalSearch}
+                placeholder={animalSearchLoading ? 'Searching…' : 'Search Tag ID / name / EID...'}
+              />
             </div>
             <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-xl p-2 space-y-1">
               {eligibleAnimals.length === 0 ? (

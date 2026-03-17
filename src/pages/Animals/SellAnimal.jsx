@@ -55,7 +55,8 @@ const SellAnimal = () => {
 
   const fetchActiveAnimals = async () => {
     try {
-      const response = await animalAPI.getAll({ status: 'Active' });
+      // Load more than the default 10 so dropdowns and local lookups aren't "random"
+      const response = await animalAPI.getAll({ status: 'Active', limit: 100, sort: 'tagId' });
       if (response.success) {
         setAnimals(response.data);
       }
@@ -254,8 +255,13 @@ const SellAnimal = () => {
         toast.success(`Removed ${rawTagIds.length - tagIds.length} duplicate TagId(s)`);
       }
 
+      // Fetch matching animals from backend (supports 300+ tag IDs reliably)
+      const lookupRes = await animalAPI.getByTagIds(tagIds);
+      const foundAnimals = lookupRes?.success && Array.isArray(lookupRes.data) ? lookupRes.data : [];
+      const byTag = new Map(foundAnimals.map(a => [String(a.tagId || '').toLowerCase(), a]));
+
       const preview = tagIds.map(tagId => {
-        const animal = findAnimalByTagId(tagId);
+        const animal = byTag.get(normalizeTagId(tagId).toLowerCase()) || findAnimalByTagId(tagId);
         if (!animal) {
           return {
             tagId,

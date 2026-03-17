@@ -36,6 +36,9 @@ import { diagnosisTypes, treatmentTypes } from '../../data/mockData';
 const Treatment = () => {
   const [treatments, setTreatments] = useState([]);
   const [animals, setAnimals] = useState([]);
+  const [animalSearch, setAnimalSearch] = useState('');
+  const [searchedAnimals, setSearchedAnimals] = useState([]);
+  const [animalSearchLoading, setAnimalSearchLoading] = useState(false);
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -81,10 +84,42 @@ const Treatment = () => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const q = animalSearch.trim();
+    if (!q) {
+      setSearchedAnimals([]);
+      setAnimalSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const run = async () => {
+      setAnimalSearchLoading(true);
+      try {
+        const res = await animalAPI.getAll({ limit: 100, sort: 'tagId', search: q });
+        if (cancelled) return;
+        if (res.success) {
+          const list = Array.isArray(res.data) ? res.data : [];
+          setSearchedAnimals(list.filter(a => a.status === 'Active'));
+        } else {
+          setSearchedAnimals([]);
+        }
+      } catch (e) {
+        if (!cancelled) setSearchedAnimals([]);
+      } finally {
+        if (!cancelled) setAnimalSearchLoading(false);
+      }
+    };
+    run();
+
+    return () => { cancelled = true; };
+  }, [animalSearch]);
+
   const fetchData = async () => {
     try {
       const [animalsRes, stocksRes, treatmentsRes] = await Promise.all([
-        animalAPI.getAll(),
+        // Backend caps limit at 100; default is 10 which feels "random" in dropdowns.
+        animalAPI.getAll({ limit: 100, sort: 'tagId' }),
         stockAPI.getAll(),
         healthAPI.getTreatments()
       ]);
@@ -248,6 +283,9 @@ const Treatment = () => {
   };
 
   const openModal = (treatment = null) => {
+    setAnimalSearch('');
+    setSearchedAnimals([]);
+    setAnimalSearchLoading(false);
     if (treatment) {
       setIsEdit(true);
       setEditId(getId(treatment));
@@ -288,6 +326,9 @@ const Treatment = () => {
     setModalOpen(false);
     setIsEdit(false);
     setEditId(null);
+    setAnimalSearch('');
+    setSearchedAnimals([]);
+    setAnimalSearchLoading(false);
     setFormData({
       date: new Date().toISOString().split('T')[0],
       animalId: '',
@@ -322,6 +363,12 @@ const Treatment = () => {
   );
 
   const totalMedicineAmount = formData.medicines.reduce((sum, m) => sum + m.total, 0);
+
+  const animalOptionsSource = animalSearch.trim() ? searchedAnimals : animals;
+  const animalOptions = animalOptionsSource
+    .filter(a => a.status === 'Active')
+    .sort((a, b) => String(a.tagId || '').localeCompare(String(b.tagId || '')))
+    .map(a => ({ value: getId(a), label: `${a.tagId} - ${a.name || ''}`.trim() }));
 
   // Summary stats (support both cureStatus and cured from API)
   const curedCount = treatments.filter(t => isCured(t)).length;
@@ -504,19 +551,23 @@ const Treatment = () => {
               error={errors.date}
               required
             />
-            <Select
-              label="Animal (Tag ID)"
-              name="animalId"
-              value={formData.animalId}
-              onChange={handleChange}
-              options={animals.map(a => ({
-                value: getId(a),
-                label: `${a.tagId} - ${a.name}`
-              }))}
-              placeholder="Select animal"
-              error={errors.animalId}
-              required
-            />
+            <div className="space-y-2">
+              <SearchInput
+                value={animalSearch}
+                onChange={setAnimalSearch}
+                placeholder={animalSearchLoading ? 'Searching…' : 'Search Tag ID / name / EID...'}
+              />
+              <Select
+                label="Animal (Tag ID)"
+                name="animalId"
+                value={formData.animalId}
+                onChange={handleChange}
+                options={animalOptions}
+                placeholder={animalOptions.length === 0 ? 'No matching animals' : 'Select animal'}
+                error={errors.animalId}
+                required
+              />
+            </div>
           </div>
 
           <Textarea

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import ExcelJS from 'exceljs';
@@ -52,6 +52,8 @@ const BulkUpload = () => {
   const [purchaseFood, setPurchaseFood] = useState('');
   const [purchaseHotel, setPurchaseHotel] = useState('');
   const [animalsToUpload, setAnimalsToUpload] = useState([]);
+  const [visibleRows, setVisibleRows] = useState(50);
+  const ROWS_PER_PAGE = 50;
 
   const getId = (item) => item?._id ?? item?.id;
 
@@ -89,7 +91,8 @@ const BulkUpload = () => {
       }
 
       try {
-        const animalsRes = await animalAPI.getAll({ limit: 1000 });
+        // Backend caps limit at 100; we just need a small sample for quick checks.
+        const animalsRes = await animalAPI.getAll({ limit: 100, sort: 'tagId' });
         if (animalsRes.success && animalsRes.data) {
           animalsData = animalsRes.data;
         } else if (Array.isArray(animalsRes)) {
@@ -203,6 +206,8 @@ const BulkUpload = () => {
     );
   };
 
+  const normalizeTagId = (value) => String(value ?? '').trim().toUpperCase();
+
   // Get friendly error message
   // eslint-disable-next-line no-unused-vars
   const getFriendlyErrorMessage = (key, value) => {
@@ -224,7 +229,8 @@ const BulkUpload = () => {
   };
 
   // Validate a single row
-  const validateRow = (row, index, allRows) => {
+  // Fast: uses precomputed duplicate counts and existing tag set
+  const validateRow = (row, index, ctx) => {
     const rowErrors = [];
     const validatedData = { ...row, rowIndex: index + 2, penId: '' }; // +2 for header row and 0-based index
 
@@ -236,18 +242,15 @@ const BulkUpload = () => {
     });
 
     // Check for duplicate Tag ID within the uploaded file
-    if (row.tagId) {
-      const duplicatesInFile = allRows.filter((r, i) => 
-        i !== index && 
-        r.tagId?.toLowerCase().trim() === row.tagId.toLowerCase().trim()
-      );
-      if (duplicatesInFile.length > 0) {
-        rowErrors.push(`Tag ID "${row.tagId}" appears multiple times in this file`);
+    const normalizedTagId = normalizeTagId(row.tagId);
+    if (normalizedTagId) {
+      validatedData.tagId = normalizedTagId;
+      if ((ctx?.tagCounts?.get(normalizedTagId) || 0) > 1) {
+        rowErrors.push(`Tag ID "${normalizedTagId}" appears multiple times in this file`);
       }
-
-      // Check if Tag ID already exists in database
-      if (isTagIdExistsInDb(row.tagId)) {
-        rowErrors.push(`Tag ID "${row.tagId}" already exists in the system`);
+      // Best-effort local check (we don't fetch the full DB list)
+      if (ctx?.existingTagSet?.has(normalizedTagId) || isTagIdExistsInDb(normalizedTagId)) {
+        rowErrors.push(`Tag ID "${normalizedTagId}" already exists in the system`);
       }
     }
 
@@ -381,6 +384,36 @@ const BulkUpload = () => {
           headers[colIdx - 1] = cell.value != null ? String(cell.value).trim() : '';
         });
 
+        // Normalize headers so slightly different names still map correctly
+        const normalizeHeader = (h) =>
+          String(h || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[\s\-_()]/g, '');
+
+        const headerAliases = {
+          tagId: ['tagid', 'tag', 'tagno', 'tagnumber', 'tag#', 'tagid#'],
+          name: ['animalname', 'name'],
+          animalType: ['animaltype', 'type'],
+          breedType: ['breedtype', 'breed'],
+          subcategory: ['subcategory', 'animalsubcategory', 'subcat', 'category'],
+          sex: ['sex', 'gender'],
+          purchasedFrom: ['purchasedfrom', 'country', 'origin'],
+          arrivalDate: ['arrivaldate', 'arrival', 'dateofarrival', 'purchasedate'],
+          birthDate: ['birthdate', 'dob', 'dateofbirth'],
+          buyingWeight: ['buyingweight', 'initialweight', 'purchaseweight'],
+          weight: ['currentweightkg', 'currentweight', 'weightkg', 'weight'],
+          weightDate: ['weightdate', 'dateofweight', 'weighedon'],
+          notes: ['notes', 'note', 'remarks', 'comment', 'comments']
+        };
+
+        const headerIndexByKey = {};
+        const normalizedHeaders = headers.map(normalizeHeader);
+        Object.entries(headerAliases).forEach(([key, aliases]) => {
+          const idx = normalizedHeaders.findIndex((h) => aliases.includes(h));
+          if (idx >= 0) headerIndexByKey[key] = idx;
+        });
+
         // Convert to JSON (array of objects keyed by header, mirroring sheet_to_json behaviour)
         const jsonData = [];
         worksheet.eachRow((row, rowNum) => {
@@ -398,18 +431,40 @@ const BulkUpload = () => {
           return;
         }
 
-        // Map headers to keys
+        // Map headers to keys (tolerant of header name variations)
         const mappedData = jsonData.map(row => {
           const mappedRow = {};
           templateColumns.forEach(col => {
-            const value = row[col.label];
-            mappedRow[col.key] = value?.toString().trim() || '';
+            const idx = headerIndexByKey[col.key];
+            if (idx != null) {
+              const h = headers[idx];
+              const value = row[h];
+              mappedRow[col.key] = value?.toString().trim() || '';
+            } else {
+              // Fallback: exact label match
+              const value = row[col.label];
+              mappedRow[col.key] = value?.toString().trim() || '';
+            }
           });
           return mappedRow;
         });
 
         // Validate each row (pass all rows for duplicate check)
-        const validatedData = mappedData.map((row, index) => validateRow(row, index, mappedData));
+        // Precompute duplicate counts in O(n)
+        const tagCounts = new Map();
+        for (const row of mappedData) {
+          const t = normalizeTagId(row.tagId);
+          if (!t) continue;
+          tagCounts.set(t, (tagCounts.get(t) || 0) + 1);
+        }
+
+        // Precompute existing tags (best-effort, limited list)
+        const existingTagSet = new Set(
+          (existingAnimals || []).map(a => normalizeTagId(a.tagId)).filter(Boolean)
+        );
+
+        const ctx = { tagCounts, existingTagSet };
+        const validatedData = mappedData.map((row, index) => validateRow(row, index, ctx));
         
         // Mark all as needing pen selection (add pen error)
         const dataWithPenError = validatedData.map(row => ({
@@ -419,6 +474,7 @@ const BulkUpload = () => {
         }));
         
         setParsedData(dataWithPenError);
+        setVisibleRows(ROWS_PER_PAGE);
         setUploadErrors([]);
         
         const dataErrors = validatedData.filter(r => r.errors.length > 0).length;
@@ -504,21 +560,21 @@ const BulkUpload = () => {
     toast.success(`Pen set for all ${parsedData.length} animals`);
   };
 
-  // Remove row from parsed data
+  // Remove row from parsed data (O(n) duplicate recheck using a Map)
   const removeRow = (index) => {
     setParsedData(prev => {
       const updated = prev.filter((_, i) => i !== index);
-      // Re-validate to update duplicate tag ID checks
-      return updated.map((row, i) => {
+      const tagCounts = new Map();
+      for (const r of updated) {
+        const t = normalizeTagId(r.tagId);
+        if (t) tagCounts.set(t, (tagCounts.get(t) || 0) + 1);
+      }
+      return updated.map(row => {
         const baseRow = { ...row };
-        // Remove old duplicate errors and re-check
         baseRow.errors = baseRow.errors.filter(e => !e.includes('appears multiple times'));
-        const duplicatesInFile = updated.filter((r, j) => 
-          j !== i && 
-          r.tagId?.toLowerCase().trim() === baseRow.tagId?.toLowerCase().trim()
-        );
-        if (duplicatesInFile.length > 0) {
-          baseRow.errors.push(`Tag ID "${baseRow.tagId}" appears multiple times in this file`);
+        const t = normalizeTagId(baseRow.tagId);
+        if (t && (tagCounts.get(t) || 0) > 1) {
+          baseRow.errors.push(`Tag ID "${t}" appears multiple times in this file`);
         }
         baseRow.isValid = baseRow.errors.length === 0;
         return baseRow;
@@ -557,11 +613,17 @@ const BulkUpload = () => {
       errors.push(`${invalidRows.length} animal(s) have validation errors. Please fix them or remove the rows.`);
     }
 
-    // Check for duplicate tag IDs one more time
-    const tagIds = parsedData.map(r => r.tagId?.toLowerCase().trim()).filter(Boolean);
-    const duplicates = tagIds.filter((id, i) => tagIds.indexOf(id) !== i);
-    if (duplicates.length > 0) {
-      errors.push(`Duplicate Tag IDs found: ${[...new Set(duplicates)].join(', ')}`);
+    // Check for duplicate tag IDs one more time (O(n) with Set)
+    const seen = new Set();
+    const duplicates = new Set();
+    for (const r of parsedData) {
+      const t = (r.tagId || '').toLowerCase().trim();
+      if (!t) continue;
+      if (seen.has(t)) duplicates.add(t);
+      seen.add(t);
+    }
+    if (duplicates.size > 0) {
+      errors.push(`Duplicate Tag IDs found: ${[...duplicates].join(', ')}`);
     }
 
     // Check pen capacity constraints
@@ -967,7 +1029,7 @@ const BulkUpload = () => {
             </div>
           </div>
 
-          {/* Data Table */}
+          {/* Data Table (paginated for performance) */}
           <div className="overflow-x-auto">
             <Table>
               <TableHead>
@@ -984,7 +1046,7 @@ const BulkUpload = () => {
                 <TableHeader className="w-12"></TableHeader>
               </TableHead>
               <TableBody>
-                {parsedData.map((animal, index) => (
+                {parsedData.slice(0, visibleRows).map((animal, index) => (
                   <TableRow 
                     key={index} 
                     className={
@@ -1073,6 +1135,29 @@ const BulkUpload = () => {
               </TableBody>
             </Table>
           </div>
+
+          {/* Show more / Show all */}
+          {parsedData.length > visibleRows && (
+            <div className="flex items-center justify-center gap-3 mt-4">
+              <span className="text-sm text-gray-500">
+                Showing {visibleRows} of {parsedData.length} rows
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setVisibleRows(v => Math.min(v + ROWS_PER_PAGE, parsedData.length))}
+              >
+                Show {Math.min(ROWS_PER_PAGE, parsedData.length - visibleRows)} more
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setVisibleRows(parsedData.length)}
+              >
+                Show all
+              </Button>
+            </div>
+          )}
 
           {/* Help Text */}
           <div className="mt-4 p-4 bg-gray-50 rounded-xl">
