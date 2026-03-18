@@ -11,7 +11,7 @@ import {
   HiOutlineExclamation,
   HiOutlineX
 } from 'react-icons/hi';
-import { stockAPI, capitalAPI } from '../../services/api';
+import { stockAPI } from '../../services/api';
 import {
   PageHeader,
   Card,

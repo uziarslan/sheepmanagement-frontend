@@ -141,21 +141,6 @@ const ApplyRecipe = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const getDatesToApply = () => {
-    if (formData.applyMode === 'single') {
-      return [formData.date];
-    }
-    const dates = [];
-    const start = new Date(formData.dateStart);
-    const end = new Date(formData.dateEnd);
-    const current = new Date(start);
-    while (current <= end) {
-      dates.push(current.toISOString().split('T')[0]);
-      current.setDate(current.getDate() + 1);
-    }
-    return dates;
-  };
-
   const handleApply = async (e) => {
     e.preventDefault();
     if (!validate()) return;

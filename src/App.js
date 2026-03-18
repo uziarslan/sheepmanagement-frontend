@@ -3,35 +3,6 @@ import { Toaster } from 'react-hot-toast';
 import DashboardLayout from './components/Layout/DashboardLayout';
 import ErrorBoundary from './components/ErrorBoundary';
 import { useAuth } from './Context/AuthContext';
-
-// Loading skeleton component
-const LoadingSpinner = () => (
-  <div style={{
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    minHeight: '100vh',
-    backgroundColor: '#f3f4f6'
-  }}>
-    <div style={{ textAlign: 'center' }}>
-      <div style={{
-        width: '50px',
-        height: '50px',
-        border: '4px solid #e5e7eb',
-        borderTop: '4px solid #3b82f6',
-        borderRadius: '50%',
-        animation: 'spin 1s linear infinite',
-        margin: '0 auto 20px'
-      }} />
-      <p style={{ color: '#6b7280', fontSize: '16px' }}>Loading...</p>
-      <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
-    </div>
-  </div>
-);
 import {
   Login,
   Register,
@@ -76,6 +47,35 @@ import {
   ApplicationHistory,
   AuditLogs
 } from './pages';
+
+// Loading skeleton component
+const LoadingSpinner = () => (
+  <div style={{
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: '100vh',
+    backgroundColor: '#f3f4f6'
+  }}>
+    <div style={{ textAlign: 'center' }}>
+      <div style={{
+        width: '50px',
+        height: '50px',
+        border: '4px solid #e5e7eb',
+        borderTop: '4px solid #3b82f6',
+        borderRadius: '50%',
+        animation: 'spin 1s linear infinite',
+        margin: '0 auto 20px'
+      }} />
+      <p style={{ color: '#6b7280', fontSize: '16px' }}>Loading...</p>
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  </div>
+);
 
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {

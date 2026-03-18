@@ -12,7 +12,9 @@ export const PARTNER_OPTIONS = [
   { value: PARTNERS.PARTNER_2, label: PARTNERS.PARTNER_2 }
 ];
 
-export default {
+const constants = {
   PARTNERS,
   PARTNER_OPTIONS
 };
+
+export default constants;
