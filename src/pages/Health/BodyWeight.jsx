@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import {
   HiOutlinePlus,
@@ -7,7 +7,8 @@ import {
   HiOutlineTrendingDown,
   HiOutlineDocumentDownload,
   HiOutlineCloudUpload,
-  HiOutlineExclamationCircle
+  HiOutlineExclamationCircle,
+  HiOutlineCalendar
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
 import ExcelJS from 'exceljs';
@@ -40,16 +41,33 @@ const toISODate = (d) => {
   return `${y}-${m}-${day}`;
 };
 
-// Monday-based week start.
 const getWeekStartISO = (dateLike) => {
   const d = new Date(dateLike);
   if (isNaN(d.getTime())) return '';
   const copy = new Date(d);
   copy.setHours(0, 0, 0, 0);
-  const day = copy.getDay(); // 0 Sun .. 6 Sat
+  const day = copy.getDay();
   const diff = day === 0 ? -6 : 1 - day;
   copy.setDate(copy.getDate() + diff);
   return toISODate(copy);
+};
+
+const formatWeekShort = (isoDate) => {
+  const d = new Date(isoDate + 'T00:00:00');
+  if (isNaN(d.getTime())) return isoDate;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+const fetchAllPages = async (fetchFn, { limit = 100, maxPages = 50 } = {}) => {
+  const all = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const res = await fetchFn({ page, limit });
+    if (!res?.success) throw new Error(res?.message || 'Request failed');
+    const chunk = Array.isArray(res.data) ? res.data : [];
+    all.push(...chunk);
+    if (chunk.length < limit) break;
+  }
+  return all;
 };
 
 const BodyWeight = () => {
@@ -57,6 +75,7 @@ const BodyWeight = () => {
   const [weightRecords, setWeightRecords] = useState([]);
   const [pens, setPens] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [weightLoading, setWeightLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
   const [penFilter, setPenFilter] = useState('');
@@ -64,21 +83,11 @@ const BodyWeight = () => {
   const [breedFilter, setBreedFilter] = useState('');
   const [minWeight, setMinWeight] = useState('');
   const [maxWeight, setMaxWeight] = useState('');
-  const [weeksToShow, setWeeksToShow] = useState(12);
-  
-  // Modal state
+  const [weeksToShow, setWeeksToShow] = useState('all');
+  const [selectedBatch, setSelectedBatch] = useState('all');
+
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedAnimal, setSelectedAnimal] = useState(null);
-
-  // Excel Import modal state
-  const importInputRef = useRef(null);
-  const [importOpen, setImportOpen] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [importPreview, setImportPreview] = useState([]); // { tagId, animalId, animalName, penName, weekStart, date, weight, status, errors[] }
-  const [importErrors, setImportErrors] = useState([]);
-  const lastFetchErrorRef = useRef('');
-  
-  // Form state
   const [formData, setFormData] = useState({
     animalId: '',
     date: new Date().toISOString().split('T')[0],
@@ -86,13 +95,21 @@ const BodyWeight = () => {
   });
   const [errors, setErrors] = useState({});
 
-  // Helper to get id from item (supports both _id and id)
+  const importInputRef = useRef(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importPreview, setImportPreview] = useState([]);
+  const [importErrors, setImportErrors] = useState([]);
+  const lastFetchErrorRef = useRef('');
+
   const getId = (item) => item?._id ?? item?.id;
+
   const getAnimalPenId = (animal) => {
     const pen = animal?.pen ?? animal?.penId;
     if (pen && typeof pen === 'object') return pen._id || pen.id;
     return pen;
   };
+
   const getAnimalPenName = (animal) => {
     if (animal?.pen && typeof animal.pen === 'object' && animal.pen.name) return animal.pen.name;
     const penId = getAnimalPenId(animal);
@@ -100,74 +117,195 @@ const BodyWeight = () => {
     return found?.name || 'Unassigned';
   };
 
-  const fetchData = useCallback(async () => {
-    const fetchAllPages = async (fetchFn, { limit = 100, maxPages = 50 } = {}) => {
-      const all = [];
-      for (let page = 1; page <= maxPages; page++) {
-        const res = await fetchFn({ page, limit });
-        if (!res?.success) {
-          throw new Error(res?.message || 'Request failed');
+  // ── Phase 1: Fetch animals + pens on mount ──
+  useEffect(() => {
+    const fetchBaseData = async () => {
+      try {
+        const [animalsAll, pensAll] = await Promise.all([
+          fetchAllPages((p) => animalAPI.getAll({ ...p, status: 'Active', sort: 'tagId' })),
+          fetchAllPages((p) => penAPI.getAll({ ...p, sort: 'name' }), { maxPages: 20 })
+        ]);
+        setAnimals((animalsAll || []).filter(a => a.status === 'Active'));
+        setPens(pensAll || []);
+      } catch (error) {
+        const msg = error?.message || 'Failed to fetch data';
+        if (lastFetchErrorRef.current !== msg) {
+          toast.error(msg);
+          lastFetchErrorRef.current = msg;
+          setTimeout(() => { if (lastFetchErrorRef.current === msg) lastFetchErrorRef.current = ''; }, 1500);
         }
-        const chunk = Array.isArray(res.data) ? res.data : [];
-        all.push(...chunk);
-        if (chunk.length < limit) break;
+      } finally {
+        setLoading(false);
       }
-      return all;
+    };
+    fetchBaseData();
+  }, []);
+
+  // ── Phase 2: Fetch weight records when time range changes ──
+  useEffect(() => {
+    if (!animals.length) return;
+    let cancelled = false;
+
+    const fetchWeights = async () => {
+      setWeightLoading(true);
+      try {
+        const params = { sort: '-date' };
+        if (weeksToShow !== 'all') {
+          const n = parseInt(weeksToShow) || 12;
+          const end = new Date();
+          end.setHours(23, 59, 59, 999);
+          const start = new Date(end);
+          start.setDate(start.getDate() - (n * 7) + 1);
+          start.setHours(0, 0, 0, 0);
+          params.startDate = toISODate(start);
+          params.endDate = toISODate(end);
+        }
+
+        const weightsAll = await fetchAllPages(
+          (p) => healthAPI.getWeightRecords({ ...p, ...params }),
+          { limit: 100, maxPages: weeksToShow === 'all' ? 100 : 20 }
+        );
+        if (!cancelled) setWeightRecords(weightsAll || []);
+      } catch (error) {
+        if (!cancelled) {
+          const msg = error?.message || 'Failed to fetch weight records';
+          toast.error(msg);
+        }
+      } finally {
+        if (!cancelled) setWeightLoading(false);
+      }
     };
 
-    try {
-      // Only fetch weights for the selected week window to keep payload small.
-      const weeksWindow = Number.isFinite(Number(weeksToShow)) && Number(weeksToShow) > 0
-        ? Number(weeksToShow)
-        : 12;
+    fetchWeights();
+    return () => { cancelled = true; };
+  }, [weeksToShow, animals.length]);
 
-      const end = new Date();
-      end.setHours(23, 59, 59, 999);
-      const start = new Date(end);
-      start.setDate(start.getDate() - (weeksWindow * 7) + 1);
-      start.setHours(0, 0, 0, 0);
-
-      const startISO = toISODate(start);
-      const endISO = toISODate(end);
-
-      // Backend validation caps `limit` at 100 for these endpoints.
-      // Fetch page-by-page to avoid validation errors and still get all data needed.
-      const [animalsAll, pensAll, weightsAll] = await Promise.all([
-        fetchAllPages((p) => animalAPI.getAll({ ...p, status: 'Active', sort: 'tagId' }), { limit: 100, maxPages: 50 }),
-        fetchAllPages((p) => penAPI.getAll({ ...p, sort: 'name' }), { limit: 100, maxPages: 20 }),
-        fetchAllPages(
-          (p) => healthAPI.getWeightRecords({
-            ...p,
-            ...(startISO ? { startDate: startISO } : {}),
-            ...(endISO ? { endDate: endISO } : {}),
-            sort: '-date'
-          }),
-          { limit: 100, maxPages: 10 }
-        )
-      ]);
-
-      setAnimals((animalsAll || []).filter(a => a.status === 'Active'));
-      setPens(pensAll || []);
-      setWeightRecords(weightsAll || []);
-    } catch (error) {
-      const msg = error?.message || 'Failed to fetch data';
-      // React StrictMode can run effects twice in dev; avoid duplicate identical toasts.
-      if (lastFetchErrorRef.current !== msg) {
-        toast.error(msg);
-        lastFetchErrorRef.current = msg;
-        setTimeout(() => {
-          if (lastFetchErrorRef.current === msg) lastFetchErrorRef.current = '';
-        }, 1500);
+  // ── Batches: group animals by arrival month ──
+  const batches = useMemo(() => {
+    const map = new Map();
+    for (const a of animals) {
+      const d = a.arrivalDate ? new Date(a.arrivalDate) : null;
+      if (!d || isNaN(d.getTime())) continue;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!map.has(key)) {
+        const label = d.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+        map.set(key, { key, label, animalIds: new Set(), earliestDate: d, latestDate: d });
       }
-    } finally {
-      setLoading(false);
+      const batch = map.get(key);
+      batch.animalIds.add(String(getId(a)));
+      if (d < batch.earliestDate) batch.earliestDate = d;
+      if (d > batch.latestDate) batch.latestDate = d;
     }
-  }, [weeksToShow]);
+    return Array.from(map.values())
+      .map(b => ({ ...b, count: b.animalIds.size }))
+      .sort((a, b) => b.earliestDate - a.earliestDate);
+  }, [animals]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  // ── Animals in selected batch ──
+  const batchAnimals = useMemo(() => {
+    if (selectedBatch === 'all') return animals;
+    const batch = batches.find(b => b.key === selectedBatch);
+    if (!batch) return animals;
+    return animals.filter(a => batch.animalIds.has(String(getId(a))));
+  }, [animals, selectedBatch, batches]);
 
+  // ── Filtered animals (search + filters on top of batch) ──
+  const filteredAnimals = useMemo(() => {
+    let list = filterBySearch(batchAnimals, search, ['tagId', 'name', 'breedType']);
+    if (penFilter) list = list.filter(a => String(getAnimalPenId(a) || '') === String(penFilter));
+    if (sexFilter) list = list.filter(a => a.sex === sexFilter);
+    if (breedFilter) list = list.filter(a => a.breedType === breedFilter);
+    const min = minWeight === '' ? null : parseFloat(minWeight);
+    const max = maxWeight === '' ? null : parseFloat(maxWeight);
+    if (min !== null && !isNaN(min)) list = list.filter(a => (Number(a.weight) || 0) >= min);
+    if (max !== null && !isNaN(max)) list = list.filter(a => (Number(a.weight) || 0) <= max);
+    return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchAnimals, search, penFilter, sexFilter, breedFilter, minWeight, maxWeight, pens]);
+
+  // ── Dynamic week columns (per batch or global) ──
+  const weekColumns = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const currentWeekStart = getWeekStartISO(now);
+    if (!currentWeekStart) return [];
+
+    let batchStart = null;
+    if (selectedBatch !== 'all') {
+      const batch = batches.find(b => b.key === selectedBatch);
+      if (batch) batchStart = batch.earliestDate;
+    } else {
+      for (const a of animals) {
+        const d = a.arrivalDate ? new Date(a.arrivalDate) : null;
+        if (d && !isNaN(d.getTime()) && (!batchStart || d < batchStart)) batchStart = d;
+      }
+    }
+
+    if (!batchStart) {
+      batchStart = new Date(now);
+      batchStart.setDate(batchStart.getDate() - 12 * 7);
+    }
+
+    let effectiveStart;
+    if (weeksToShow === 'all') {
+      effectiveStart = batchStart;
+    } else {
+      const n = parseInt(weeksToShow) || 12;
+      const limitStart = new Date(now);
+      limitStart.setDate(limitStart.getDate() - n * 7);
+      effectiveStart = limitStart > batchStart ? limitStart : batchStart;
+    }
+
+    const startWeek = getWeekStartISO(effectiveStart);
+    if (!startWeek) return [];
+
+    const cols = [];
+    const d = new Date(startWeek + 'T00:00:00');
+    const end = new Date(currentWeekStart + 'T00:00:00');
+    while (d <= end) {
+      cols.push(toISODate(d));
+      d.setDate(d.getDate() + 7);
+    }
+    return cols;
+  }, [selectedBatch, batches, weeksToShow, animals]);
+
+  // ── Batch-relative week number ──
+  const batchFirstWeek = useMemo(() => {
+    if (selectedBatch === 'all') return null;
+    const batch = batches.find(b => b.key === selectedBatch);
+    if (!batch) return null;
+    return getWeekStartISO(batch.earliestDate);
+  }, [selectedBatch, batches]);
+
+  const getWeekNumber = (weekISO) => {
+    if (!batchFirstWeek) return null;
+    const start = new Date(batchFirstWeek + 'T00:00:00');
+    const current = new Date(weekISO + 'T00:00:00');
+    const diffDays = Math.round((current - start) / (1000 * 60 * 60 * 24));
+    return Math.floor(diffDays / 7) + 1;
+  };
+
+  // ── Weight lookup map: animalId|weekStart → { weight, date } ──
+  const weightsByAnimalWeek = useMemo(() => {
+    const map = new Map();
+    const weekSet = new Set(weekColumns);
+    for (const r of weightRecords || []) {
+      const animalId = String(r.animal?._id || r.animal || r.animalId || '').trim();
+      if (!animalId) continue;
+      const weekStart = getWeekStartISO(r.date);
+      if (!weekStart || !weekSet.has(weekStart)) continue;
+
+      const key = `${animalId}|${weekStart}`;
+      const existing = map.get(key);
+      const rDate = new Date(r.date);
+      if (!existing || new Date(existing.date) < rDate) {
+        map.set(key, { weight: r.weight, date: r.date });
+      }
+    }
+    return map;
+  }, [weightRecords, weekColumns]);
+
+  // ── Form handlers ──
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -176,13 +314,11 @@ const BodyWeight = () => {
 
   const validate = () => {
     const newErrors = {};
-    
     if (!formData.animalId) newErrors.animalId = 'Select an animal';
     if (!formData.date) newErrors.date = 'Date is required';
     if (!formData.weight || parseFloat(formData.weight) <= 0) {
       newErrors.weight = 'Enter a valid weight';
     }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -195,8 +331,6 @@ const BodyWeight = () => {
     try {
       const animalIdKey = String(formData.animalId).trim();
       const animal = animals.find(a => String(getId(a)) === animalIdKey);
-      
-      // Backend calculates previousWeight automatically - don't send it
       const weightData = {
         animal: animalIdKey,
         animalTagId: animal?.tagId,
@@ -206,17 +340,13 @@ const BodyWeight = () => {
       };
 
       const response = await healthAPI.createWeightRecord(weightData);
-      
       if (response.success) {
-        // Backend updates animal weight automatically via WeightRecord pre-save hook.
-        // Update local state optimistically.
-        setAnimals(prev => prev.map(a => 
-          String(getId(a)) === animalIdKey 
+        setAnimals(prev => prev.map(a =>
+          String(getId(a)) === animalIdKey
             ? { ...a, weight: parseFloat(formData.weight), weightDate: formData.date }
             : a
         ));
         setWeightRecords(prev => [response.data, ...prev]);
-        
         toast.success('Weight recorded successfully');
         closeModal();
       }
@@ -241,135 +371,11 @@ const BodyWeight = () => {
   const closeModal = () => {
     setModalOpen(false);
     setSelectedAnimal(null);
-    setFormData({
-      animalId: '',
-      date: new Date().toISOString().split('T')[0],
-      weight: ''
-    });
+    setFormData({ animalId: '', date: new Date().toISOString().split('T')[0], weight: '' });
     setErrors({});
   };
 
-  const filteredAnimals = useMemo(() => {
-    let list = filterBySearch(animals, search, ['tagId', 'name', 'breedType']);
-    if (penFilter) {
-      list = list.filter(a => String(getAnimalPenId(a) || '') === String(penFilter));
-    }
-    if (sexFilter) {
-      list = list.filter(a => a.sex === sexFilter);
-    }
-    if (breedFilter) {
-      list = list.filter(a => a.breedType === breedFilter);
-    }
-    const min = minWeight === '' ? null : parseFloat(minWeight);
-    const max = maxWeight === '' ? null : parseFloat(maxWeight);
-    if (min !== null && !isNaN(min)) {
-      list = list.filter(a => (Number(a.weight) || 0) >= min);
-    }
-    if (max !== null && !isNaN(max)) {
-      list = list.filter(a => (Number(a.weight) || 0) <= max);
-    }
-    return list;
-  }, [animals, search, penFilter, sexFilter, breedFilter, minWeight, maxWeight]);
-
-  const weekColumns = useMemo(() => {
-    const weeksWindow = Number.isFinite(Number(weeksToShow)) && Number(weeksToShow) > 0
-      ? Number(weeksToShow)
-      : 12;
-    const end = new Date();
-    end.setHours(0, 0, 0, 0);
-    const cols = [];
-    for (let i = weeksWindow - 1; i >= 0; i--) {
-      const d = new Date(end);
-      d.setDate(d.getDate() - (i * 7));
-      const weekStart = getWeekStartISO(d);
-      cols.push(weekStart);
-    }
-    // de-dup in case of edge conditions
-    return Array.from(new Set(cols));
-  }, [weeksToShow]);
-
-  const weightsByAnimalWeek = useMemo(() => {
-    // Map: animalId -> weekStartISO -> { weight, date }
-    const map = new Map();
-    for (const r of weightRecords || []) {
-      const animalId = String(r.animal?._id || r.animal || r.animalId || '').trim();
-      if (!animalId) continue;
-      const weekStart = getWeekStartISO(r.date);
-      if (!weekStart) continue;
-      if (!weekColumns.includes(weekStart)) continue;
-
-      const key = `${animalId}|${weekStart}`;
-      const existing = map.get(key);
-      const rDate = new Date(r.date);
-      if (!existing || (existing.date && new Date(existing.date) < rDate)) {
-        map.set(key, { weight: r.weight, date: r.date });
-      }
-    }
-    return map;
-  }, [weightRecords, weekColumns]);
-
-  const exportToExcel = async () => {
-    if (!filteredAnimals.length) {
-      toast.error('No animals to export (check your filters)');
-      return;
-    }
-
-    const headers = ['Tag ID', 'Name', 'Pen', 'Sex', 'Breed', 'Current Weight (kg)'];
-    const weekHeaders = weekColumns.map(w => `Week of ${w}`);
-    const aoa = [headers.concat(weekHeaders)];
-
-    for (const a of filteredAnimals) {
-      const animalId = String(getId(a));
-      const row = [
-        a.tagId || '',
-        a.name || '',
-        getAnimalPenName(a),
-        a.sex || '',
-        a.breedType || '',
-        Number(a.weight) || 0
-      ];
-
-      for (const w of weekColumns) {
-        const cell = weightsByAnimalWeek.get(`${animalId}|${w}`);
-        row.push(cell?.weight ?? '');
-      }
-      aoa.push(row);
-    }
-
-    const wb = new ExcelJS.Workbook();
-
-    const sheet = wb.addWorksheet('BodyWeights');
-    sheet.columns = aoa[0].map(() => ({ width: 18 }));
-    sheet.addRows(aoa);
-
-    const instructions = [
-      ['Body Weight Import/Export'],
-      [''],
-      ['How to import:'],
-      ['- Keep the same headers'],
-      ['- Fill weight cells with numeric values (kg)'],
-      ['- Leave empty cells blank (no update)'],
-      ['- Tag ID is used to match animals'],
-      [''],
-      ['Note: Week columns use the week-start date (Monday). The import will record weight on that date.']
-    ];
-    const insSheet = wb.addWorksheet('Instructions');
-    insSheet.getColumn(1).width = 70;
-    insSheet.addRows(instructions);
-
-    const buffer = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `body_weight_${toISODate(new Date())}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    toast.success('Excel exported');
-  };
-
+  // ── Import handlers ──
   const openImport = () => {
     setImportErrors([]);
     setImportPreview([]);
@@ -387,7 +393,6 @@ const BodyWeight = () => {
   const parseImportExcel = async (file) => {
     setImportErrors([]);
     setImportPreview([]);
-
     if (!file) return;
     if (!file.name.match(/\.(xlsx|xls)$/i)) {
       toast.error('Please upload an Excel file (.xlsx or .xls)');
@@ -400,13 +405,11 @@ const BodyWeight = () => {
       await workbook.xlsx.load(buffer);
       const worksheet = workbook.worksheets[0];
 
-      // Extract headers from row 1
       const headers = [];
       worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colIdx) => {
         headers[colIdx - 1] = cell.value != null ? String(cell.value).trim() : '';
       });
 
-      // Build rows array as objects keyed by header (mirrors sheet_to_json)
       const rows = [];
       worksheet.eachRow((row, rowNum) => {
         if (rowNum === 1) return;
@@ -417,136 +420,110 @@ const BodyWeight = () => {
         });
         rows.push(obj);
       });
-        if (!rows.length) {
-          toast.error('No data found in the Excel file');
-          return;
-        }
 
-        const animalByTag = new Map(
-          animals.map(a => [String(a.tagId || '').trim().toLowerCase(), a])
-        );
-
-        const parsed = [];
-        const errorsList = [];
-
-        // detect week columns
-        const first = rows[0] || {};
-        const allKeys = Object.keys(first);
-        const weekKeys = allKeys.filter(k => String(k).toLowerCase().startsWith('week of '));
-        if (!allKeys.includes('Tag ID')) {
-          errorsList.push('Missing required column: Tag ID');
-        }
-        if (!weekKeys.length) {
-          errorsList.push('No week columns found. Expected columns like: "Week of YYYY-MM-DD"');
-        }
-
-        for (let i = 0; i < rows.length; i++) {
-          const r = rows[i];
-          const tagIdRaw = String(r['Tag ID'] ?? '').trim();
-          const tagKey = tagIdRaw.toLowerCase();
-          const animal = animalByTag.get(tagKey);
-
-          if (!tagIdRaw) {
-            errorsList.push(`Row ${i + 2}: Tag ID is missing`);
-            continue;
-          }
-          if (!animal) {
-            errorsList.push(`Row ${i + 2}: Tag ID "${tagIdRaw}" not found in your animals`);
-            continue;
-          }
-
-          for (const wk of weekKeys) {
-            const wkDateStr = String(wk).replace(/^Week of\s*/i, '').trim();
-            const wkISO = toISODate(wkDateStr);
-            if (!wkISO) {
-              errorsList.push(`Header "${wk}": invalid date. Use YYYY-MM-DD`);
-              continue;
-            }
-
-            const val = r[wk];
-            if (val === null || val === undefined || String(val).trim() === '') continue;
-
-            const num = parseFloat(String(val).replace(/,/g, ''));
-            if (isNaN(num) || num <= 0) {
-              errorsList.push(`Row ${i + 2} (${tagIdRaw}) ${wk}: invalid weight "${val}"`);
-              continue;
-            }
-
-            parsed.push({
-              tagId: tagIdRaw,
-              animalId: String(getId(animal)),
-              animalName: animal.name,
-              penName: getAnimalPenName(animal),
-              weekStart: wkISO,
-              date: wkISO,
-              weight: num,
-              status: 'ready',
-              errors: []
-            });
-          }
-        }
-
-        // de-dup updates: keep last occurrence
-        const dedup = new Map();
-        for (const item of parsed) {
-          dedup.set(`${item.animalId}|${item.date}`, item);
-        }
-        const finalPreview = Array.from(dedup.values());
-
-        setImportPreview(finalPreview);
-        setImportErrors(errorsList);
-
-        if (errorsList.length) {
-          toast.error('Some issues found in the file. Please review.');
-        } else {
-          toast.success(`${finalPreview.length} weight update(s) ready`);
-        }
-    } catch (err) {
-      if (typeof console !== 'undefined' && console.error) {
-        console.error(err);
+      if (!rows.length) {
+        toast.error('No data found in the Excel file');
+        return;
       }
+
+      const animalByTag = new Map(
+        animals.map(a => [String(a.tagId || '').trim().toLowerCase(), a])
+      );
+
+      const parsed = [];
+      const errorsList = [];
+      const first = rows[0] || {};
+      const allKeys = Object.keys(first);
+      const weekKeys = allKeys.filter(k => String(k).toLowerCase().startsWith('week of '));
+
+      if (!allKeys.includes('Tag ID')) {
+        errorsList.push('Missing required column: Tag ID');
+      }
+      if (!weekKeys.length) {
+        errorsList.push('No week columns found. Expected columns like: "Week of YYYY-MM-DD"');
+      }
+
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        const tagIdRaw = String(r['Tag ID'] ?? '').trim();
+        const tagKey = tagIdRaw.toLowerCase();
+        const animal = animalByTag.get(tagKey);
+
+        if (!tagIdRaw) { errorsList.push(`Row ${i + 2}: Tag ID is missing`); continue; }
+        if (!animal) { errorsList.push(`Row ${i + 2}: Tag ID "${tagIdRaw}" not found in your animals`); continue; }
+
+        for (const wk of weekKeys) {
+          const wkDateStr = String(wk).replace(/^Week of\s*/i, '').trim();
+          const wkISO = toISODate(wkDateStr);
+          if (!wkISO) { errorsList.push(`Header "${wk}": invalid date. Use YYYY-MM-DD`); continue; }
+
+          const val = r[wk];
+          if (val === null || val === undefined || String(val).trim() === '') continue;
+
+          const num = parseFloat(String(val).replace(/,/g, ''));
+          if (isNaN(num) || num <= 0) {
+            errorsList.push(`Row ${i + 2} (${tagIdRaw}) ${wk}: invalid weight "${val}"`);
+            continue;
+          }
+
+          parsed.push({
+            tagId: tagIdRaw,
+            animalId: String(getId(animal)),
+            animalName: animal.name,
+            penName: getAnimalPenName(animal),
+            weekStart: wkISO,
+            date: wkISO,
+            weight: num,
+            status: 'ready',
+            errors: []
+          });
+        }
+      }
+
+      const dedup = new Map();
+      for (const item of parsed) dedup.set(`${item.animalId}|${item.date}`, item);
+      const finalPreview = Array.from(dedup.values());
+
+      setImportPreview(finalPreview);
+      setImportErrors(errorsList);
+
+      if (errorsList.length) {
+        toast.error('Some issues found in the file. Please review.');
+      } else {
+        toast.success(`${finalPreview.length} weight update(s) ready`);
+      }
+    } catch (err) {
+      console.error(err);
       toast.error('Failed to parse Excel file. Please check the format.');
     }
   };
 
   const applyImport = async () => {
-    if (!importPreview.length) {
-      toast.error('No updates to apply');
-      return;
-    }
-    if (importErrors.length) {
-      toast.error('Please fix the errors before importing');
-      return;
-    }
+    if (!importPreview.length) { toast.error('No updates to apply'); return; }
+    if (importErrors.length) { toast.error('Please fix the errors before importing'); return; }
 
     setImporting(true);
     let ok = 0;
     let fail = 0;
     const failures = [];
-
-    const chunkSize = 25; // number of concurrent requests per batch
-    const pauseMs = 300; // pause between batches to avoid rate limits
-
+    const chunkSize = 25;
     const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
     for (let i = 0; i < importPreview.length; i += chunkSize) {
       const chunk = importPreview.slice(i, i + chunkSize);
-      // Launch chunk in parallel
       const results = await Promise.all(chunk.map(async (item) => {
         try {
-          const payload = {
+          const res = await healthAPI.createWeightRecord({
             animal: item.animalId,
             date: item.date,
             weight: item.weight
-          };
-          const res = await healthAPI.createWeightRecord(payload);
+          });
           return { item, res };
         } catch (e) {
           return { item, err: e };
         }
       }));
 
-      // Process results
       for (const r of results) {
         const { item, res, err } = r;
         if (err) {
@@ -555,15 +532,15 @@ const BodyWeight = () => {
         } else if (res?.success) {
           ok++;
           setWeightRecords(prev => [res.data, ...prev]);
-          setAnimals(prev => prev.map(a => (String(getId(a)) === item.animalId ? { ...a, weight: item.weight, weightDate: item.date } : a)));
+          setAnimals(prev => prev.map(a =>
+            String(getId(a)) === item.animalId ? { ...a, weight: item.weight, weightDate: item.date } : a
+          ));
         } else {
           fail++;
           failures.push(`${item.tagId} (${item.date}): ${res?.message || 'Failed'}`);
         }
       }
-
-      // brief pause between batches
-      if (i + chunkSize < importPreview.length) await sleep(pauseMs);
+      if (i + chunkSize < importPreview.length) await sleep(300);
     }
 
     setImporting(false);
@@ -571,26 +548,103 @@ const BodyWeight = () => {
       toast.success(`Imported ${ok} record(s)`);
       closeImport();
     } else {
-      setImportErrors([
-        `Imported ${ok} record(s).`,
-        `${fail} failed:`,
-        ...failures.slice(0, 20)
-      ]);
+      setImportErrors([`Imported ${ok} record(s).`, `${fail} failed:`, ...failures.slice(0, 20)]);
       toast.error(`${fail} update(s) failed`);
     }
   };
 
-  // Stats
-  const avgWeight = animals.length > 0 
-    ? (animals.reduce((sum, a) => sum + (a.weight || 0), 0) / animals.length).toFixed(1)
+  // ── Export to Excel ──
+  const exportToExcel = async () => {
+    if (!filteredAnimals.length) {
+      toast.error('No animals to export (check your filters)');
+      return;
+    }
+
+    const selectedBatchData = batches.find(b => b.key === selectedBatch);
+    const sheetLabel = selectedBatchData ? `${selectedBatchData.label} Batch` : 'All Animals';
+
+    const headers = ['Tag ID', 'Name', 'Pen', 'Sex', 'Breed', 'Current Weight (kg)'];
+    const weekHeaders = weekColumns.map(w => `Week of ${w}`);
+    const aoa = [headers.concat(weekHeaders)];
+
+    for (const a of filteredAnimals) {
+      const animalId = String(getId(a));
+      const row = [
+        a.tagId || '', a.name || '', getAnimalPenName(a),
+        a.sex || '', a.breedType || '', Number(a.weight) || 0
+      ];
+      for (const w of weekColumns) {
+        const cell = weightsByAnimalWeek.get(`${animalId}|${w}`);
+        row.push(cell?.weight ?? '');
+      }
+      aoa.push(row);
+    }
+
+    const wb = new ExcelJS.Workbook();
+    const sheet = wb.addWorksheet(sheetLabel);
+    sheet.columns = aoa[0].map(() => ({ width: 18 }));
+    sheet.addRows(aoa);
+
+    const headerRow = sheet.getRow(1);
+    headerRow.font = { bold: true };
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F0FE' } };
+
+    const instructions = [
+      ['Body Weight Import/Export'],
+      [''],
+      [selectedBatchData ? `Batch: ${selectedBatchData.label} (${selectedBatchData.count} animals)` : 'All Animals'],
+      [''],
+      ['How to import:'],
+      ['- Keep the same headers'],
+      ['- Fill weight cells with numeric values (kg)'],
+      ['- Leave empty cells blank (no update)'],
+      ['- Tag ID is used to match animals'],
+      ['- You can add new "Week of YYYY-MM-DD" columns for additional weeks'],
+      [''],
+      ['Note: Week columns use the week-start date (Monday). The import will record weight on that date.']
+    ];
+    const insSheet = wb.addWorksheet('Instructions');
+    insSheet.getColumn(1).width = 70;
+    insSheet.addRows(instructions);
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const batchSuffix = selectedBatchData ? `_${selectedBatchData.key}` : '';
+    a.download = `body_weight${batchSuffix}_${toISODate(new Date())}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success('Excel exported');
+  };
+
+  // ── Stats (scoped to selected batch) ──
+  const batchAnimalIds = useMemo(() => {
+    return new Set(batchAnimals.map(a => String(getId(a))));
+  }, [batchAnimals]);
+
+  const avgWeight = batchAnimals.length > 0
+    ? (batchAnimals.reduce((sum, a) => sum + (a.weight || 0), 0) / batchAnimals.length).toFixed(1)
     : 0;
-  const totalWeight = animals.reduce((sum, a) => sum + (a.weight || 0), 0);
+  const totalWeight = batchAnimals.reduce((sum, a) => sum + (a.weight || 0), 0);
   const weightedThisMonth = weightRecords.filter(w => {
     const recordDate = new Date(w.date);
     const now = new Date();
-    return recordDate.getMonth() === now.getMonth() && 
-           recordDate.getFullYear() === now.getFullYear();
+    const animalId = String(w.animal?._id || w.animal || w.animalId || '');
+    return recordDate.getMonth() === now.getMonth() &&
+      recordDate.getFullYear() === now.getFullYear() &&
+      batchAnimalIds.has(animalId);
   }).length;
+
+  const recentRecords = useMemo(() => {
+    if (selectedBatch === 'all') return weightRecords.slice(0, 10);
+    return weightRecords
+      .filter(r => batchAnimalIds.has(String(r.animal?._id || r.animal || r.animalId || '')))
+      .slice(0, 10);
+  }, [weightRecords, selectedBatch, batchAnimalIds]);
 
   if (loading) {
     return <PageLoader />;
@@ -600,7 +654,7 @@ const BodyWeight = () => {
     <div className="space-y-6">
       <PageHeader
         title="Body Weight Tracking"
-        subtitle="Track weights weekly with filters + Excel import/export"
+        subtitle="Track weights weekly by batch with filters + Excel import/export"
         breadcrumbs={[
           { label: 'Health Management' },
           { label: 'Body Weight' }
@@ -626,8 +680,10 @@ const BodyWeight = () => {
           <div className="text-white">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-blue-100 text-sm">Total Animals</p>
-                <p className="text-2xl font-bold mt-1">{animals.length}</p>
+                <p className="text-blue-100 text-sm">
+                  {selectedBatch !== 'all' ? 'Batch Animals' : 'Total Animals'}
+                </p>
+                <p className="text-2xl font-bold mt-1">{batchAnimals.length}</p>
               </div>
               <HiOutlineScale className="w-8 h-8 text-blue-200" />
             </div>
@@ -668,14 +724,67 @@ const BodyWeight = () => {
         </Card>
       </div>
 
-      {/* Filters + Weekly Weight Table */}
+      {/* Main Table Card */}
       <Card>
+        {/* Batch Tabs */}
+        <div className="mb-5">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Batch (by arrival month)</p>
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-3 border-b border-gray-200">
+            <button
+              onClick={() => setSelectedBatch('all')}
+              className={`px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-all ${
+                selectedBatch === 'all'
+                  ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              All Animals
+              <span className="ml-1.5 text-xs font-normal opacity-70">({animals.length})</span>
+            </button>
+            {batches.map(b => (
+              <button
+                key={b.key}
+                onClick={() => setSelectedBatch(b.key)}
+                className={`px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-all ${
+                  selectedBatch === b.key
+                    ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {b.label}
+                <span className="ml-1.5 text-xs font-normal opacity-70">({b.count})</span>
+              </button>
+            ))}
+            {batches.length === 0 && (
+              <span className="text-sm text-gray-400 italic px-3">No batches detected (animals need arrival dates)</span>
+            )}
+          </div>
+
+          {/* Batch info banner */}
+          {selectedBatch !== 'all' && (() => {
+            const b = batches.find(x => x.key === selectedBatch);
+            return b ? (
+              <div className="mt-3 px-4 py-2.5 bg-blue-50 border border-blue-100 rounded-lg flex items-center gap-3 text-sm">
+                <HiOutlineCalendar className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                <span className="text-blue-800">
+                  <span className="font-medium">{b.label} Batch</span>
+                  {' \u2014 '}{b.count} animal{b.count !== 1 ? 's' : ''}
+                  {' \u2022 '}Arrived from {formatWeekShort(toISODate(b.earliestDate))}
+                  {' \u2022 '}{weekColumns.length} week{weekColumns.length !== 1 ? 's' : ''} tracked
+                </span>
+              </div>
+            ) : null;
+          })()}
+        </div>
+
+        {/* Filters */}
         <div className="flex flex-col gap-4 mb-6">
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
             <div>
               <h3 className="text-lg font-semibold text-gray-800">Weekly Weight Table</h3>
               <p className="text-sm text-gray-500">
-                {filteredAnimals.length} animal(s) • {weekColumns.length} week column(s)
+                {filteredAnimals.length} animal(s) &bull; {weekColumns.length} week column(s)
+                {weightLoading && <span className="ml-2 text-blue-500 animate-pulse">Loading weights...</span>}
               </p>
             </div>
             <div className="w-full lg:w-72">
@@ -737,24 +846,27 @@ const BodyWeight = () => {
               placeholder="e.g. 80"
             />
             <Select
-              label="Weeks"
+              label="Time Range"
               name="weeksToShow"
               value={String(weeksToShow)}
               onChange={(e) => {
-                const next = parseInt(e.target.value, 10);
-                setWeeksToShow(Number.isFinite(next) && next > 0 ? next : 12);
+                const val = e.target.value;
+                setWeeksToShow(val === 'all' ? 'all' : parseInt(val, 10));
               }}
               options={[
                 { value: '4', label: 'Last 4 weeks' },
                 { value: '8', label: 'Last 8 weeks' },
                 { value: '12', label: 'Last 12 weeks' },
-                { value: '24', label: 'Last 24 weeks' }
+                { value: '24', label: 'Last 24 weeks' },
+                { value: '52', label: 'Last 52 weeks' },
+                { value: 'all', label: 'All Time' }
               ]}
-              placeholder="Weeks"
+              placeholder="Time Range"
             />
           </div>
         </div>
 
+        {/* Weekly Weight Table */}
         <div className="overflow-x-auto border border-gray-200 rounded-xl">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -762,11 +874,15 @@ const BodyWeight = () => {
                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 z-10">Animal</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-[220px] bg-gray-50 z-10 hidden md:table-cell">Pen</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current</th>
-                {weekColumns.map(w => (
-                  <th key={w} className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
-                    {w}
-                  </th>
-                ))}
+                {weekColumns.map(w => {
+                  const wn = getWeekNumber(w);
+                  return (
+                    <th key={w} className="px-3 py-3 text-center text-xs font-medium text-gray-500 whitespace-nowrap" title={w}>
+                      {wn != null && <div className="text-[10px] text-gray-400 font-normal leading-tight">W{wn}</div>}
+                      <div>{formatWeekShort(w)}</div>
+                    </th>
+                  );
+                })}
                 <th className="px-3 py-3"></th>
               </tr>
             </thead>
@@ -788,8 +904,8 @@ const BodyWeight = () => {
                             <GiSheep className="w-5 h-5 text-emerald-600" />
                           </div>
                           <div className="min-w-0">
-                            <p className="font-semibold text-gray-900 text-sm truncate">{a.tagId} • {a.name}</p>
-                            <p className="text-xs text-gray-500 truncate">{a.breedType} • {a.sex}</p>
+                            <p className="font-semibold text-gray-900 text-sm truncate">{a.tagId} &bull; {a.name}</p>
+                            <p className="text-xs text-gray-500 truncate">{a.breedType} &bull; {a.sex}</p>
                           </div>
                         </div>
                       </td>
@@ -815,18 +931,18 @@ const BodyWeight = () => {
                         let cellBg = '';
                         if (currentWeight != null) {
                           if (prevWeight == null) {
-                            cellBg = 'bg-yellow-100 text-yellow-900';
+                            cellBg = 'bg-yellow-50 text-yellow-900';
                           } else if (currentWeight > prevWeight) {
-                            cellBg = 'bg-green-100 text-green-800';
+                            cellBg = 'bg-green-50 text-green-800';
                           } else if (currentWeight < prevWeight) {
-                            cellBg = 'bg-red-100 text-red-800';
+                            cellBg = 'bg-red-50 text-red-800';
                           } else {
-                            cellBg = 'bg-yellow-100 text-yellow-900';
+                            cellBg = 'bg-yellow-50 text-yellow-900';
                           }
                         }
 
                         return (
-                          <td key={w} className={`px-3 py-3 text-center whitespace-nowrap ${cellBg || ''}`}>
+                          <td key={w} className={`px-3 py-3 text-center whitespace-nowrap ${cellBg}`}>
                             {currentWeight != null ? (
                               <span className="text-sm font-medium">{cell.weight}</span>
                             ) : (
@@ -854,9 +970,16 @@ const BodyWeight = () => {
         </div>
       </Card>
 
-      {/* Recent Weight Records Table */}
+      {/* Recent Weight Records */}
       <Card>
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Weight Records</h3>
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">
+          Recent Weight Records
+          {selectedBatch !== 'all' && (
+            <span className="text-sm font-normal text-gray-500 ml-2">
+              ({batches.find(b => b.key === selectedBatch)?.label || 'Batch'})
+            </span>
+          )}
+        </h3>
         <Table>
           <TableHead>
             <TableHeader>Date</TableHeader>
@@ -866,13 +989,10 @@ const BodyWeight = () => {
             <TableHeader>Change</TableHeader>
           </TableHead>
           <TableBody>
-            {weightRecords.slice(0, 10).length === 0 ? (
-              <TableEmpty
-                message="No weight records yet"
-                colSpan={5}
-              />
+            {recentRecords.length === 0 ? (
+              <TableEmpty message="No weight records yet" colSpan={5} />
             ) : (
-              weightRecords.slice(0, 10).map((record) => {
+              recentRecords.map((record) => {
                 const change = record.weight - (record.previousWeight || 0);
                 return (
                   <TableRow key={getId(record)}>
@@ -885,7 +1005,7 @@ const BodyWeight = () => {
                           <GiSheep className="w-4 h-4 text-emerald-600" />
                         </div>
                         <div>
-                          <p className="font-medium text-sm">{record.tagId}</p>
+                          <p className="font-medium text-sm">{record.tagId || record.animalTagId}</p>
                           <p className="text-xs text-gray-500">{record.animalName}</p>
                         </div>
                       </div>
@@ -898,7 +1018,7 @@ const BodyWeight = () => {
                     </TableCell>
                     <TableCell>
                       <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-sm ${
-                        change > 0 
+                        change > 0
                           ? 'bg-emerald-100 text-emerald-700'
                           : change < 0
                             ? 'bg-red-100 text-red-700'
@@ -932,10 +1052,13 @@ const BodyWeight = () => {
         <div className="space-y-5">
           <div className="p-4 bg-gray-50 rounded-xl">
             <p className="text-sm text-gray-700">
-              Upload the Excel you exported from this page. We’ll validate it and show a preview before applying updates.
+              Upload the Excel you exported from this page. We'll validate it and show a preview before applying updates.
             </p>
             <p className="text-xs text-gray-500 mt-1">
               Required: <span className="font-medium">Tag ID</span> column and week columns like <span className="font-medium">Week of 2026-01-05</span>.
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              You can add new week columns in Excel for dates beyond the exported range.
             </p>
           </div>
 
@@ -973,9 +1096,7 @@ const BodyWeight = () => {
               Preview: <span className="font-semibold text-gray-900">{importPreview.length}</span> update(s)
             </div>
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={closeImport}>
-                Close
-              </Button>
+              <Button variant="secondary" onClick={closeImport}>Close</Button>
               <Button onClick={applyImport} loading={importing} disabled={!importPreview.length || importErrors.length > 0}>
                 Apply Import
               </Button>
@@ -1005,7 +1126,7 @@ const BodyWeight = () => {
                   {importPreview.length > 200 && (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center text-sm text-gray-500 py-3">
-                        Showing first 200 updates…
+                        Showing first 200 updates&hellip;
                       </TableCell>
                     </TableRow>
                   )}
@@ -1051,7 +1172,7 @@ const BodyWeight = () => {
                     <div>
                       <p className="font-semibold">{animal.name}</p>
                       <p className="text-sm text-gray-500">
-                        Current: {animal.weight || 0} kg • 
+                        Current: {animal.weight || 0} kg &bull;{' '}
                         Last: {animal.weightDate ? formatDate(animal.weightDate) : 'Never'}
                       </p>
                     </div>
