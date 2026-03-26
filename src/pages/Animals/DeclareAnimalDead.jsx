@@ -14,7 +14,8 @@ import {
   Button,
   Select,
   Input,
-  Badge
+  Badge,
+  SearchInput
 } from '../../components/common';
 import { ConfirmDialog } from '../../components/common/Modal';
 import { PageLoader } from '../../components/common/Spinner';
@@ -25,6 +26,9 @@ const DeclareAnimalDead = () => {
   const [loading, setLoading] = useState(true);
   const [selectedAnimalId, setSelectedAnimalId] = useState('');
   const [selectedAnimal, setSelectedAnimal] = useState(null);
+  const [animalSearch, setAnimalSearch] = useState('');
+  const [searchedAnimals, setSearchedAnimals] = useState([]);
+  const [animalSearchLoading, setAnimalSearchLoading] = useState(false);
   const [deathData, setDeathData] = useState({
     deathDate: new Date().toISOString().split('T')[0],
     deathReason: ''
@@ -36,6 +40,37 @@ const DeclareAnimalDead = () => {
   useEffect(() => {
     fetchActiveAnimals();
   }, []);
+
+  useEffect(() => {
+    const q = animalSearch.trim();
+    if (!q) {
+      setSearchedAnimals([]);
+      setAnimalSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const run = async () => {
+      setAnimalSearchLoading(true);
+      try {
+        const res = await animalAPI.getAll({ limit: 100, sort: 'tagId', search: q, status: 'Active' });
+        if (cancelled) return;
+        if (res.success) {
+          const list = Array.isArray(res.data) ? res.data : [];
+          setSearchedAnimals(list.filter(a => a.status === 'Active'));
+        } else {
+          setSearchedAnimals([]);
+        }
+      } catch (e) {
+        if (!cancelled) setSearchedAnimals([]);
+      } finally {
+        if (!cancelled) setAnimalSearchLoading(false);
+      }
+    };
+    run();
+
+    return () => { cancelled = true; };
+  }, [animalSearch]);
 
   const fetchActiveAnimals = async () => {
     try {
@@ -136,18 +171,82 @@ const DeclareAnimalDead = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <Select
-              label="Select Animal"
-              name="animalId"
-              value={selectedAnimalId}
-              onChange={handleAnimalSelect}
-              options={animals.map(a => ({
-                value: a._id || a.id,
-                label: `${a.tagId} - ${a.name || 'Unnamed'} (${a.animalType})`
-              }))}
-              placeholder="Choose an animal..."
-              required
-            />
+            {/* Animal Search */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select Animal
+              </label>
+              <div className="mb-2">
+                <SearchInput
+                  value={animalSearch}
+                  onChange={setAnimalSearch}
+                  placeholder={animalSearchLoading ? 'Searching…' : 'Search Tag ID / name...'}
+                />
+              </div>
+              <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-xl p-2 space-y-1 bg-white">
+                {animalSearch.trim() === '' && animals.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-4">
+                    No active animals available
+                  </p>
+                ) : animalSearch.trim() === '' ? (
+                  animals.map((animal) => (
+                    <button
+                      key={animal._id || animal.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedAnimalId(animal._id || animal.id);
+                        setSelectedAnimal(animal);
+                        setResult(null);
+                        setAnimalSearch('');
+                      }}
+                      className={`w-full text-left flex items-center gap-3 p-3 rounded-lg transition-colors ${
+                        selectedAnimalId === (animal._id || animal.id)
+                          ? 'bg-emerald-50 border border-emerald-200'
+                          : 'hover:bg-gray-50 border border-transparent'
+                      }`}
+                    >
+                      <div className="w-8 h-8 rounded bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                        <GiSheep className="w-5 h-5 text-emerald-600" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900">{animal.tagId}</p>
+                        <p className="text-xs text-gray-500">{animal.name || 'Unnamed'} • {animal.animalType}</p>
+                      </div>
+                    </button>
+                  ))
+                ) : searchedAnimals.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-4">
+                    No animals found
+                  </p>
+                ) : (
+                  searchedAnimals.map((animal) => (
+                    <button
+                      key={animal._id || animal.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedAnimalId(animal._id || animal.id);
+                        setSelectedAnimal(animal);
+                        setResult(null);
+                        setAnimalSearch('');
+                      }}
+                      className={`w-full text-left flex items-center gap-3 p-3 rounded-lg transition-colors ${
+                        selectedAnimalId === (animal._id || animal.id)
+                          ? 'bg-emerald-50 border border-emerald-200'
+                          : 'hover:bg-gray-50 border border-transparent'
+                      }`}
+                    >
+                      <div className="w-8 h-8 rounded bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                        <GiSheep className="w-5 h-5 text-emerald-600" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900">{animal.tagId}</p>
+                        <p className="text-xs text-gray-500">{animal.name || 'Unnamed'} • {animal.animalType}</p>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
 
             <Input
               label="Death Date"
