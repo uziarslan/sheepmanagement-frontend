@@ -12,7 +12,6 @@ import {
   PageHeader,
   Card,
   Button,
-  Select,
   Input,
   Badge,
   SearchInput
@@ -83,14 +82,6 @@ const DeclareAnimalDead = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleAnimalSelect = (e) => {
-    const animalId = e.target.value;
-    setSelectedAnimalId(animalId);
-    const animal = animals.find(a => (a._id || a.id) === animalId);
-    setSelectedAnimal(animal);
-    setResult(null);
   };
 
   const handleInputChange = (e) => {
