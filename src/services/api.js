@@ -877,6 +877,16 @@ export const capitalAPI = {
     }
   },
 
+  // Backward-compatible alias used by existing UI code.
+  setInitial: async ({ partner1 = 0, partner2 = 0, retainedEarnings = 0 }) => {
+    try {
+      const response = await axiosInstance.post('/capital/initialize', { partner1, partner2, retainedEarnings });
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
   update: async (amount, type, description, investmentSubtype = null) => {
     try {
       const body = { amount, type, description };
