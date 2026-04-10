@@ -268,11 +268,11 @@ const Capital = () => {
               return (
                 <div className="mt-6 pt-6 border-t border-white/20 grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="bg-white/10 rounded-lg px-4 py-3">
-                    <p className="text-emerald-100 text-xs font-medium uppercase tracking-wide">Partner1 (Imran Shah)</p>
+                    <p className="text-emerald-100 text-xs font-medium uppercase tracking-wide">{PARTNERS.PARTNER_1}</p>
                     <p className="text-xl font-bold mt-1">{formatCurrency(p1)}</p>
                   </div>
                   <div className="bg-white/10 rounded-lg px-4 py-3">
-                    <p className="text-emerald-100 text-xs font-medium uppercase tracking-wide">Partner2 (Raza Abbas)</p>
+                    <p className="text-emerald-100 text-xs font-medium uppercase tracking-wide">{PARTNERS.PARTNER_2}</p>
                     <p className="text-xl font-bold mt-1">{formatCurrency(p2)}</p>
                   </div>
                   <div className="bg-white/10 rounded-lg px-4 py-3">
@@ -480,7 +480,7 @@ const Capital = () => {
           {modalType === 'initial' ? (
             <>
               <Input
-                label="Partner1 (Imran Shah)"
+                label={PARTNERS.PARTNER_1}
                 type="number"
                 name="partner1"
                 value={formData.partner1}
@@ -491,7 +491,7 @@ const Capital = () => {
                 min={0}
               />
               <Input
-                label="Partner2 (Raza Abbas)"
+                label={PARTNERS.PARTNER_2}
                 type="number"
                 name="partner2"
                 value={formData.partner2}
