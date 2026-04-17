@@ -30,6 +30,7 @@ import Modal, { ConfirmDialog } from '../../components/common/Modal';
 import { PageLoader } from '../../components/common/Spinner';
 import { shearingTypes } from '../../data/mockData';
 
+
 const WOOL_QUALITIES = ['Excellent', 'Good', 'Average', 'Poor'];
 
 const Shearing = () => {
