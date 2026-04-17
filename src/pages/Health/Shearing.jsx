@@ -6,7 +6,7 @@ import {
   HiOutlineTrash,
   HiOutlinePencil
 } from 'react-icons/hi';
-import { GiSheep, GiFootprint } from 'react-icons/gi';
+import { GiSheep, GiScissors } from 'react-icons/gi';
 import { animalAPI, employeeAPI, healthAPI, penAPI } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
@@ -28,10 +28,12 @@ import {
 } from '../../components/common';
 import Modal, { ConfirmDialog } from '../../components/common/Modal';
 import { PageLoader } from '../../components/common/Spinner';
-import { hoofDiagnosis } from '../../data/mockData';
+import { shearingTypes } from '../../data/mockData';
 
-const HoofTrimming = () => {
-  const [hoofRecords, setHoofRecords] = useState([]);
+const WOOL_QUALITIES = ['Excellent', 'Good', 'Average', 'Poor'];
+
+const Shearing = () => {
+  const [shearingRecords, setShearingRecords] = useState([]);
   const [animals, setAnimals] = useState([]);
   const [searchedAnimals, setSearchedAnimals] = useState([]);
   const [animalSearchLoading, setAnimalSearchLoading] = useState(false);
@@ -43,12 +45,12 @@ const HoofTrimming = () => {
   const [animalSearch, setAnimalSearch] = useState('');
 
   // Scope / multi-animal state
-  const [scope, setScope] = useState('Individual'); // 'Individual' | 'Multiple' | 'Pen'
+  const [scope, setScope] = useState('Individual');
   const [selectedAnimalIds, setSelectedAnimalIds] = useState([]);
   const [penId, setPenId] = useState('');
   const [penAnimals, setPenAnimals] = useState([]);
   const [penLoading, setPenLoading] = useState(false);
-  const [filterPenId, setFilterPenId] = useState(''); // filter in Multiple scope
+  const [filterPenId, setFilterPenId] = useState('');
 
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -63,24 +65,17 @@ const HoofTrimming = () => {
     animalId: '',
     date: new Date().toISOString().split('T')[0],
     technicianId: '',
-    diagnosis: '',
-    hoofDetails: {
-      frontLeft: { condition: '', treated: false },
-      frontRight: { condition: '', treated: false },
-      backLeft: { condition: '', treated: false },
-      backRight: { condition: '', treated: false }
-    },
+    shearingType: '',
+    woolWeight: '',
+    woolQuality: 'Good',
     cost: '',
     comments: ''
   });
 
   const [errors, setErrors] = useState({});
 
-  // Helper to get id from item (supports both _id and id)
   const getId = (item) => item?._id ?? item?.id;
-  const getPenLabel = (pen) => {
-    return pen?.name || pen?.penName || pen?.penNumber || 'Unnamed Pen';
-  };
+  const getPenLabel = (pen) => pen?.name || pen?.penName || pen?.penNumber || 'Unnamed Pen';
   const getAnimalPenId = (animal) => {
     const pen = animal?.pen ?? animal?.penId;
     if (pen && typeof pen === 'object') return pen._id || pen.id;
@@ -93,7 +88,6 @@ const HoofTrimming = () => {
 
   useEffect(() => {
     const q = animalSearch.trim();
-    // If empty, fall back to the initially-loaded list
     if (!q) {
       setSearchedAnimals([]);
       setAnimalSearchLoading(false);
@@ -120,23 +114,21 @@ const HoofTrimming = () => {
     };
     run();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [animalSearch]);
 
   const fetchData = async () => {
     try {
-      const [animalsRes, employeesRes, hoofRes, pensRes] = await Promise.all([
+      const [animalsRes, employeesRes, shearingRes, pensRes] = await Promise.all([
         animalAPI.getAll({ limit: 100, sort: 'tagId' }),
         employeeAPI.getAll(),
-        healthAPI.getHoofRecords(),
+        healthAPI.getShearingRecords(),
         penAPI.getAll({ limit: 100, sort: 'name' })
       ]);
-      
+
       if (animalsRes.success) setAnimals(animalsRes.data.filter(a => a.status === 'Active'));
       if (employeesRes.success) setEmployees(employeesRes.data.filter(e => e.status === 'Active'));
-      if (hoofRes.success) setHoofRecords(hoofRes.data);
+      if (shearingRes.success) setShearingRecords(shearingRes.data);
       if (pensRes.success) {
         const pensList = Array.isArray(pensRes.data)
           ? pensRes.data
@@ -156,20 +148,6 @@ const HoofTrimming = () => {
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
   };
 
-  const handleHoofChange = (hoof, field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      hoofDetails: {
-        ...prev.hoofDetails,
-        [hoof]: {
-          ...prev.hoofDetails[hoof],
-          [field]: field === 'treated' ? value : value
-        }
-      }
-    }));
-  };
-
-  // Multi-animal helpers
   const loadPenAnimals = async (id) => {
     if (!id) { setPenAnimals([]); setSelectedAnimalIds([]); return; }
     setPenLoading(true);
@@ -193,22 +171,19 @@ const HoofTrimming = () => {
     );
   };
 
-  const handleSelectAll = (list) => {
-    setSelectedAnimalIds(list.map(a => getId(a)));
-  };
-
+  const handleSelectAll = (list) => setSelectedAnimalIds(list.map(a => getId(a)));
   const handleClearAll = () => setSelectedAnimalIds([]);
 
   const validate = () => {
     const newErrors = {};
-    
+
     if (scope === 'Individual' || isEdit) {
       if (!formData.animalId) newErrors.animalId = 'Select an animal';
     } else {
       if (selectedAnimalIds.length === 0) newErrors.animalId = 'Select at least one animal';
     }
     if (!formData.date) newErrors.date = 'Date is required';
-    if (!formData.diagnosis) newErrors.diagnosis = 'Diagnosis is required';
+    if (!formData.shearingType) newErrors.shearingType = 'Shearing type is required';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -220,25 +195,6 @@ const HoofTrimming = () => {
 
     setSubmitting(true);
     try {
-      const positionMap = {
-        frontLeft: 'Front Left',
-        frontRight: 'Front Right',
-        backLeft: 'Rear Left',
-        backRight: 'Rear Right'
-      };
-      const validConditions = ['Normal', 'Mild Issue', 'Moderate Issue', 'Severe Issue'];
-      const hoofDetailsArray = Object.entries(formData.hoofDetails || {}).map(([key, h]) => {
-        const condStr = String(h.condition || '').trim();
-        const condition = validConditions.includes(condStr) ? condStr : 'Normal';
-        const notes = condStr && !validConditions.includes(condStr) ? condStr : null;
-        return {
-          position: positionMap[key] || key,
-          condition,
-          trimmed: Boolean(h.treated),
-          notes: notes || null
-        };
-      });
-
       const technicianIdKey = formData.technicianId ? String(formData.technicianId).trim() : null;
       const technician = technicianIdKey ? employees.find(e => String(getId(e)) === String(technicianIdKey)) : null;
 
@@ -249,16 +205,17 @@ const HoofTrimming = () => {
           date: formData.date,
           technician: technicianIdKey,
           technicianName: technician?.name || null,
-          diagnosis: formData.diagnosis,
-          hoofDetails: hoofDetailsArray,
+          shearingType: formData.shearingType,
+          woolWeight: formData.woolWeight ? parseFloat(formData.woolWeight) : 0,
+          woolQuality: formData.woolQuality || 'Good',
           cost: formData.cost ? parseFloat(formData.cost) : 0,
           comments: formData.comments || null
         };
-        const response = await healthAPI.bulkCreateHoofRecords(bulkData);
+        const response = await healthAPI.bulkCreateShearingRecords(bulkData);
         if (response.success) {
           const created = response.data?.created || [];
-          setHoofRecords(prev => [...created, ...prev]);
-          toast.success(`${created.length} hoof trimming record${created.length !== 1 ? 's' : ''} saved`);
+          setShearingRecords(prev => [...created, ...prev]);
+          toast.success(`${created.length} shearing record${created.length !== 1 ? 's' : ''} saved`);
           if (response.data?.errors?.length) {
             toast.error(`${response.data.errors.length} animal(s) could not be processed`);
           }
@@ -273,34 +230,35 @@ const HoofTrimming = () => {
       const animalIdKey = String(formData.animalId).trim();
       const animal = animals.find(a => String(getId(a)) === String(animalIdKey));
 
-      const hoofData = {
+      const shearingData = {
         animal: animalIdKey,
         animalTagId: animal?.tagId,
         animalName: animal?.name,
         date: formData.date,
         technician: technicianIdKey,
         technicianName: technician?.name || null,
-        diagnosis: formData.diagnosis,
-        hoofDetails: hoofDetailsArray,
+        shearingType: formData.shearingType,
+        woolWeight: formData.woolWeight ? parseFloat(formData.woolWeight) : 0,
+        woolQuality: formData.woolQuality || 'Good',
         cost: formData.cost ? parseFloat(formData.cost) : 0,
         comments: formData.comments || null
       };
 
       let response;
       if (isEdit) {
-        response = await healthAPI.updateHoofRecord(editId, hoofData);
+        response = await healthAPI.updateShearingRecord(editId, shearingData);
         if (response.success) {
-          setHoofRecords(prev => prev.map(h => getId(h) === editId ? response.data : h));
-          toast.success('Hoof trimming record updated');
+          setShearingRecords(prev => prev.map(r => getId(r) === editId ? response.data : r));
+          toast.success('Shearing record updated');
         }
       } else {
-        response = await healthAPI.createHoofRecord(hoofData);
+        response = await healthAPI.createShearingRecord(shearingData);
         if (response.success) {
-          setHoofRecords(prev => [response.data, ...prev]);
-          toast.success('Hoof trimming recorded successfully');
+          setShearingRecords(prev => [response.data, ...prev]);
+          toast.success('Shearing recorded successfully');
         }
       }
-      
+
       closeModal();
     } catch (error) {
       toast.error(error.message || 'Failed to save record');
@@ -314,9 +272,9 @@ const HoofTrimming = () => {
     const itemId = getId(deleteModal.item);
     setDeleting(true);
     try {
-      await healthAPI.deleteHoofRecord(itemId);
+      await healthAPI.deleteShearingRecord(itemId);
       toast.success('Record deleted');
-      setHoofRecords(prev => prev.filter(h => getId(h) !== itemId));
+      setShearingRecords(prev => prev.filter(r => getId(r) !== itemId));
       setDeleteModal({ open: false, item: null });
     } catch (error) {
       toast.error('Failed to delete record');
@@ -337,26 +295,13 @@ const HoofTrimming = () => {
       setEditId(getId(record));
       const animalRef = record.animal?._id || record.animal || record.animalId;
       const techRef = record.technician?._id || record.technician || record.technicianId;
-      const defaultHoofObj = {
-        frontLeft: { condition: '', treated: false },
-        frontRight: { condition: '', treated: false },
-        backLeft: { condition: '', treated: false },
-        backRight: { condition: '', treated: false }
-      };
-      const posToKey = { 'Front Left': 'frontLeft', 'Front Right': 'frontRight', 'Rear Left': 'backLeft', 'Rear Right': 'backRight' };
-      const hoofDetailsObj = Array.isArray(record.hoofDetails)
-        ? record.hoofDetails.reduce((acc, h) => {
-            const key = posToKey[h.position];
-            if (key) acc[key] = { condition: h.condition || '', treated: Boolean(h.trimmed) };
-            return acc;
-          }, { ...defaultHoofObj })
-        : (record.hoofDetails || defaultHoofObj);
       setFormData({
         animalId: animalRef?.toString() || '',
         date: record.date?.split?.('T')?.[0] || record.date,
         technicianId: techRef?.toString() || '',
-        diagnosis: record.diagnosis,
-        hoofDetails: hoofDetailsObj,
+        shearingType: record.shearingType || '',
+        woolWeight: record.woolWeight?.toString() || '',
+        woolQuality: record.woolQuality || 'Good',
         cost: record.cost?.toString() || '',
         comments: record.comments || ''
       });
@@ -367,13 +312,9 @@ const HoofTrimming = () => {
         animalId: '',
         date: new Date().toISOString().split('T')[0],
         technicianId: '',
-        diagnosis: '',
-        hoofDetails: {
-          frontLeft: { condition: '', treated: false },
-          frontRight: { condition: '', treated: false },
-          backLeft: { condition: '', treated: false },
-          backRight: { condition: '', treated: false }
-        },
+        shearingType: '',
+        woolWeight: '',
+        woolQuality: 'Good',
         cost: '',
         comments: ''
       });
@@ -396,23 +337,19 @@ const HoofTrimming = () => {
       animalId: '',
       date: new Date().toISOString().split('T')[0],
       technicianId: '',
-      diagnosis: '',
-      hoofDetails: {
-        frontLeft: { condition: '', treated: false },
-        frontRight: { condition: '', treated: false },
-        backLeft: { condition: '', treated: false },
-        backRight: { condition: '', treated: false }
-      },
+      shearingType: '',
+      woolWeight: '',
+      woolQuality: 'Good',
       cost: '',
       comments: ''
     });
     setErrors({});
   };
 
-  const filteredRecords = hoofRecords.filter(r =>
+  const filteredRecords = shearingRecords.filter(r =>
     r.tagId?.toLowerCase().includes(search.toLowerCase()) ||
     r.animalName?.toLowerCase().includes(search.toLowerCase()) ||
-    r.diagnosis?.toLowerCase().includes(search.toLowerCase())
+    r.shearingType?.toLowerCase().includes(search.toLowerCase())
   );
 
   const animalOptionsSource = animalSearch.trim() ? searchedAnimals : animals;
@@ -422,19 +359,13 @@ const HoofTrimming = () => {
   const multipleScopeAnimals = filteredAnimals
     .filter(a => !filterPenId || String(getAnimalPenId(a)) === String(filterPenId));
 
-  const hoofLabels = {
-    frontLeft: 'Front Left',
-    frontRight: 'Front Right',
-    backLeft: 'Back Left',
-    backRight: 'Back Right'
-  };
-
   // Stats
-  const totalCost = hoofRecords.reduce((sum, r) => sum + (r.cost || 0), 0);
-  const thisMonthRecords = hoofRecords.filter(r => {
+  const totalCost = shearingRecords.reduce((sum, r) => sum + (r.cost || 0), 0);
+  const totalWool = shearingRecords.reduce((sum, r) => sum + (r.woolWeight || 0), 0);
+  const thisMonthRecords = shearingRecords.filter(r => {
     const recordDate = new Date(r.date);
     const now = new Date();
-    return recordDate.getMonth() === now.getMonth() && 
+    return recordDate.getMonth() === now.getMonth() &&
            recordDate.getFullYear() === now.getFullYear();
   }).length;
 
@@ -445,11 +376,11 @@ const HoofTrimming = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Hoof Trimming"
-        subtitle="Record and manage hoof trimming procedures"
+        title="Shearing"
+        subtitle="Record and manage shearing (trimming) procedures"
         breadcrumbs={[
           { label: 'Health Management' },
-          { label: 'Hoof Trimming' }
+          { label: 'Shearing' }
         ]}
         action={
           <Button icon={HiOutlinePlus} onClick={() => openModal()}>
@@ -465,9 +396,9 @@ const HoofTrimming = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-blue-100 text-sm">Total Records</p>
-                <p className="text-2xl font-bold mt-1">{hoofRecords.length}</p>
+                <p className="text-2xl font-bold mt-1">{shearingRecords.length}</p>
               </div>
-              <GiFootprint className="w-8 h-8 text-blue-200" />
+              <GiScissors className="w-8 h-8 text-blue-200" />
             </div>
           </div>
         </Card>
@@ -479,10 +410,8 @@ const HoofTrimming = () => {
         </Card>
         <Card className="bg-gradient-to-br from-purple-500 to-purple-600">
           <div className="text-white">
-            <p className="text-purple-100 text-sm">Animals Treated</p>
-            <p className="text-2xl font-bold mt-1">
-              {new Set(hoofRecords.map(r => r.animalId)).size}
-            </p>
+            <p className="text-purple-100 text-sm">Total Wool (kg)</p>
+            <p className="text-2xl font-bold mt-1">{totalWool.toFixed(1)}</p>
           </div>
         </Card>
         <Card className="bg-gradient-to-br from-orange-500 to-orange-600">
@@ -496,7 +425,7 @@ const HoofTrimming = () => {
       {/* Records List */}
       <Card>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <h3 className="text-lg font-semibold text-gray-800">Hoof Trimming Records</h3>
+          <h3 className="text-lg font-semibold text-gray-800">Shearing Records</h3>
           <div className="w-full sm:w-64">
             <SearchInput
               value={search}
@@ -510,93 +439,86 @@ const HoofTrimming = () => {
           <TableHead>
             <TableHeader>Date</TableHeader>
             <TableHeader>Animal</TableHeader>
-            <TableHeader>Diagnosis</TableHeader>
+            <TableHeader>Shearing Type</TableHeader>
             <TableHeader>Technician</TableHeader>
-            <TableHeader>Hooves Treated</TableHeader>
+            <TableHeader>Wool (kg)</TableHeader>
+            <TableHeader>Quality</TableHeader>
             <TableHeader>Cost</TableHeader>
             <TableHeader className="text-right">Actions</TableHeader>
           </TableHead>
           <TableBody>
             {filteredRecords.length === 0 ? (
               <TableEmpty
-                message="No hoof trimming records found"
-                colSpan={7}
+                message="No shearing records found"
+                colSpan={8}
               />
             ) : (
-              filteredRecords.map((record) => {
-                const details = record.hoofDetails;
-                const treatedCount = Array.isArray(details)
-                  ? (details.filter(h => h.trimmed) || []).length
-                  : Object.values(details || {}).filter(h => h.treated).length;
-                
-                return (
-                  <TableRow key={getId(record)}>
-                    <TableCell>
-                      <span className="text-sm">{formatDate(record.date)}</span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                          <GiSheep className="w-4 h-4 text-emerald-600" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-sm">{record.tagId}</p>
-                          <p className="text-xs text-gray-500">{record.animalName}</p>
-                        </div>
+              filteredRecords.map((record) => (
+                <TableRow key={getId(record)}>
+                  <TableCell>
+                    <span className="text-sm">{formatDate(record.date)}</span>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+                        <GiSheep className="w-4 h-4 text-emerald-600" />
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="warning">{record.diagnosis}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm">{record.technicianName || '-'}</span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        {[...Array(4)].map((_, i) => (
-                          <div
-                            key={i}
-                            className={`w-2 h-2 rounded-full ${
-                              i < treatedCount ? 'bg-emerald-500' : 'bg-gray-200'
-                            }`}
-                          />
-                        ))}
-                        <span className="text-sm text-gray-500 ml-1">{treatedCount}/4</span>
+                      <div>
+                        <p className="font-medium text-sm">{record.tagId || record.animalTagId}</p>
+                        <p className="text-xs text-gray-500">{record.animalName}</p>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-medium text-emerald-600">
-                        {formatCurrency(record.cost || 0)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => setViewModal({ open: true, data: record })}
-                          className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="View Details"
-                        >
-                          <HiOutlineEye className="w-5 h-5" />
-                        </button>
-                        <button
-                          onClick={() => openModal(record)}
-                          className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Edit"
-                        >
-                          <HiOutlinePencil className="w-5 h-5" />
-                        </button>
-                        <button
-                          onClick={() => setDeleteModal({ open: true, item: record })}
-                          className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete"
-                        >
-                          <HiOutlineTrash className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="warning">{record.shearingType}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm">{record.technicianName || '-'}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm font-medium">{record.woolWeight || 0} kg</span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={
+                      record.woolQuality === 'Excellent' ? 'success' :
+                      record.woolQuality === 'Good' ? 'info' :
+                      record.woolQuality === 'Average' ? 'warning' : 'danger'
+                    }>
+                      {record.woolQuality || '-'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-medium text-emerald-600">
+                      {formatCurrency(record.cost || 0)}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => setViewModal({ open: true, data: record })}
+                        className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="View Details"
+                      >
+                        <HiOutlineEye className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => openModal(record)}
+                        className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Edit"
+                      >
+                        <HiOutlinePencil className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteModal({ open: true, item: record })}
+                        className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete"
+                      >
+                        <HiOutlineTrash className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
             )}
           </TableBody>
         </Table>
@@ -606,7 +528,7 @@ const HoofTrimming = () => {
       <Modal
         isOpen={modalOpen}
         onClose={closeModal}
-        title={isEdit ? 'Edit Hoof Trimming Record' : 'New Hoof Trimming Record'}
+        title={isEdit ? 'Edit Shearing Record' : 'New Shearing Record'}
         size="lg"
       >
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -850,56 +772,46 @@ const HoofTrimming = () => {
               placeholder="Select technician"
             />
             <Select
-              label="Diagnosis"
-              name="diagnosis"
-              value={formData.diagnosis}
+              label="Shearing Type"
+              name="shearingType"
+              value={formData.shearingType}
               onChange={handleChange}
-              options={hoofDiagnosis.map(d => ({ value: d, label: d }))}
-              placeholder="Select diagnosis"
-              error={errors.diagnosis}
+              options={shearingTypes.map(t => ({ value: t, label: t }))}
+              placeholder="Select shearing type"
+              error={errors.shearingType}
               required
             />
           </div>
 
-          {/* Hoof Details */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 mb-3 block">
-              Hoof Details (All Four Hooves)
-            </label>
-            <div className="grid grid-cols-2 gap-4">
-              {Object.entries(hoofLabels).map(([key, label]) => (
-                <div key={key} className="p-4 border border-gray-200 rounded-xl">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-medium text-sm">{label}</span>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={formData.hoofDetails[key].treated}
-                        onChange={(e) => handleHoofChange(key, 'treated', e.target.checked)}
-                        className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
-                      />
-                      <span className="text-xs text-gray-500">Treated</span>
-                    </label>
-                  </div>
-                  <Input
-                    placeholder="Condition/Notes"
-                    value={formData.hoofDetails[key].condition}
-                    onChange={(e) => handleHoofChange(key, 'condition', e.target.value)}
-                  />
-                </div>
-              ))}
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Input
+              label="Wool Weight (kg)"
+              type="number"
+              name="woolWeight"
+              value={formData.woolWeight}
+              onChange={handleChange}
+              placeholder="e.g. 2.5"
+              step="0.1"
+              min="0"
+            />
+            <Select
+              label="Wool Quality"
+              name="woolQuality"
+              value={formData.woolQuality}
+              onChange={handleChange}
+              options={WOOL_QUALITIES.map(q => ({ value: q, label: q }))}
+              placeholder="Select quality"
+            />
+            <Input
+              label="Cost"
+              type="number"
+              name="cost"
+              value={formData.cost}
+              onChange={handleChange}
+              placeholder="Enter cost"
+              prefix="Rs."
+            />
           </div>
-
-          <Input
-            label="Cost"
-            type="number"
-            name="cost"
-            value={formData.cost}
-            onChange={handleChange}
-            placeholder="Enter cost"
-            prefix="Rs."
-          />
 
           <Textarea
             label="Comments"
@@ -925,7 +837,7 @@ const HoofTrimming = () => {
       <Modal
         isOpen={viewModal.open}
         onClose={() => setViewModal({ open: false, data: null })}
-        title="Hoof Trimming Details"
+        title="Shearing Details"
         size="lg"
       >
         {viewModal.data && (
@@ -937,49 +849,29 @@ const HoofTrimming = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Animal</p>
-                <p className="font-medium">{viewModal.data.tagId} - {viewModal.data.animalName}</p>
+                <p className="font-medium">{viewModal.data.tagId || viewModal.data.animalTagId} - {viewModal.data.animalName}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500">Technician</p>
                 <p className="font-medium">{viewModal.data.technicianName || '-'}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Diagnosis</p>
-                <Badge variant="warning">{viewModal.data.diagnosis}</Badge>
+                <p className="text-sm text-gray-500">Shearing Type</p>
+                <Badge variant="warning">{viewModal.data.shearingType}</Badge>
               </div>
-            </div>
-
-            <div>
-              <p className="text-sm text-gray-500 mb-3">Hoof Details</p>
-              <div className="grid grid-cols-2 gap-3">
-                {Object.entries(hoofLabels).map(([key, label]) => {
-                  const details = viewModal.data.hoofDetails;
-                  const positionForLabel = { 'Front Left': 'Front Left', 'Front Right': 'Front Right', 'Back Left': 'Rear Left', 'Back Right': 'Rear Right' };
-                  const hoof = Array.isArray(details)
-                    ? details.find(h => h.position === positionForLabel[label] || h.position === label)
-                    : details?.[key];
-                  const treated = hoof?.trimmed ?? hoof?.treated;
-                  return (
-                    <div 
-                      key={key} 
-                      className={`p-3 rounded-lg border ${
-                        treated 
-                          ? 'border-emerald-200 bg-emerald-50' 
-                          : 'border-gray-200 bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-sm">{label}</span>
-                        {treated && (
-                          <Badge variant="success" className="text-xs">Treated</Badge>
-                        )}
-                      </div>
-                      {hoof?.condition && (
-                        <p className="text-sm text-gray-600 mt-1">{hoof.condition}</p>
-                      )}
-                    </div>
-                  );
-                })}
+              <div>
+                <p className="text-sm text-gray-500">Wool Weight</p>
+                <p className="font-medium">{viewModal.data.woolWeight || 0} kg</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Wool Quality</p>
+                <Badge variant={
+                  viewModal.data.woolQuality === 'Excellent' ? 'success' :
+                  viewModal.data.woolQuality === 'Good' ? 'info' :
+                  viewModal.data.woolQuality === 'Average' ? 'warning' : 'danger'
+                }>
+                  {viewModal.data.woolQuality || '-'}
+                </Badge>
               </div>
             </div>
 
@@ -1005,7 +897,7 @@ const HoofTrimming = () => {
         isOpen={deleteModal.open}
         onClose={() => setDeleteModal({ open: false, item: null })}
         onConfirm={handleDelete}
-        title="Delete Hoof Trimming Record"
+        title="Delete Shearing Record"
         message="Are you sure you want to delete this record? This action cannot be undone."
         confirmText="Delete"
         loading={deleting}
@@ -1014,4 +906,4 @@ const HoofTrimming = () => {
   );
 };
 
-export default HoofTrimming;
+export default Shearing;

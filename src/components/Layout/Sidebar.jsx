@@ -117,8 +117,10 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
         { name: 'Cure Tracking', path: '/dashboard/health/cure-tracking' },
         { name: 'Deworming', path: '/dashboard/health/deworming' },
         { name: 'Body Weight', path: '/dashboard/health/body-weight' },
+        { name: 'Body Temperature', path: '/dashboard/health/body-temperature' },
         { name: 'BCS', path: '/dashboard/health/bcs' },
-        { name: 'Hoof Trimming', path: '/dashboard/health/hoof-trimming' }
+        { name: 'Hoof Trimming', path: '/dashboard/health/hoof-trimming' },
+        { name: 'Shearing', path: '/dashboard/health/shearing' }
       ]
     },
     {

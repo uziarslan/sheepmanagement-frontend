@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import {
   HiOutlinePlus,
-  HiOutlineScale,
+  HiOutlineFire,
   HiOutlineTrendingUp,
   HiOutlineTrendingDown,
   HiOutlineDocumentDownload,
@@ -58,36 +58,10 @@ const formatWeekShort = (isoDate) => {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const isRateLimitError = (error) => {
-  const msg = String(error?.message || '').toLowerCase();
-  return msg.includes('too many requests') || msg.includes('429');
-};
-
-const withRateLimitRetry = async (operation, { retries = 4, baseDelay = 600 } = {}) => {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await operation();
-    } catch (error) {
-      if (!isRateLimitError(error) || attempt === retries) {
-        throw error;
-      }
-
-      const jitter = Math.floor(Math.random() * 250);
-      const backoffMs = baseDelay * (2 ** attempt) + jitter;
-      await sleep(backoffMs);
-    }
-  }
-};
-
 const fetchAllPages = async (fetchFn, { limit = 100, maxPages = 50 } = {}) => {
   const all = [];
   for (let page = 1; page <= maxPages; page++) {
-    const res = await withRateLimitRetry(() => fetchFn({ page, limit }), {
-      retries: 3,
-      baseDelay: 700
-    });
+    const res = await fetchFn({ page, limit });
     if (!res?.success) throw new Error(res?.message || 'Request failed');
     const chunk = Array.isArray(res.data) ? res.data : [];
     all.push(...chunk);
@@ -96,20 +70,19 @@ const fetchAllPages = async (fetchFn, { limit = 100, maxPages = 50 } = {}) => {
   return all;
 };
 
-const BodyWeight = () => {
+const BodyTemperature = () => {
   const [animals, setAnimals] = useState([]);
-  const [weightRecords, setWeightRecords] = useState([]);
   const [temperatureRecords, setTemperatureRecords] = useState([]);
   const [pens, setPens] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [weightLoading, setWeightLoading] = useState(false);
+  const [tempLoading, setTempLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
   const [penFilter, setPenFilter] = useState('');
   const [sexFilter, setSexFilter] = useState('');
   const [breedFilter, setBreedFilter] = useState('');
-  const [minWeight, setMinWeight] = useState('');
-  const [maxWeight, setMaxWeight] = useState('');
+  const [minTemp, setMinTemp] = useState('');
+  const [maxTemp, setMaxTemp] = useState('');
   const [weeksToShow, setWeeksToShow] = useState('all');
   const [selectedBatch, setSelectedBatch] = useState('all');
 
@@ -118,7 +91,7 @@ const BodyWeight = () => {
   const [formData, setFormData] = useState({
     animalId: '',
     date: new Date().toISOString().split('T')[0],
-    weight: ''
+    temperature: ''
   });
   const [errors, setErrors] = useState({});
 
@@ -168,13 +141,13 @@ const BodyWeight = () => {
     fetchBaseData();
   }, []);
 
-  // ── Phase 2: Fetch weight + temperature records when time range changes ──
+  // ── Phase 2: Fetch temperature records when time range changes ──
   useEffect(() => {
     if (!animals.length) return;
     let cancelled = false;
 
-    const fetchHealthRecords = async () => {
-      setWeightLoading(true);
+    const fetchTemperatures = async () => {
+      setTempLoading(true);
       try {
         const params = { sort: '-date' };
         if (weeksToShow !== 'all') {
@@ -188,32 +161,22 @@ const BodyWeight = () => {
           params.endDate = toISODate(end);
         }
 
-        const [weightsAll, tempsAll] = await Promise.all([
-          fetchAllPages(
-            (p) => healthAPI.getWeightRecords({ ...p, ...params }),
-            { limit: 100, maxPages: weeksToShow === 'all' ? 100 : 20 }
-          ),
-          fetchAllPages(
-            (p) => healthAPI.getTemperatureRecords({ ...p, ...params }),
-            { limit: 100, maxPages: weeksToShow === 'all' ? 100 : 20 }
-          )
-        ]);
-
-        if (!cancelled) {
-          setWeightRecords(weightsAll || []);
-          setTemperatureRecords(tempsAll || []);
-        }
+        const recordsAll = await fetchAllPages(
+          (p) => healthAPI.getTemperatureRecords({ ...p, ...params }),
+          { limit: 100, maxPages: weeksToShow === 'all' ? 100 : 20 }
+        );
+        if (!cancelled) setTemperatureRecords(recordsAll || []);
       } catch (error) {
         if (!cancelled) {
-          const msg = error?.message || 'Failed to fetch health records';
+          const msg = error?.message || 'Failed to fetch temperature records';
           toast.error(msg);
         }
       } finally {
-        if (!cancelled) setWeightLoading(false);
+        if (!cancelled) setTempLoading(false);
       }
     };
 
-    fetchHealthRecords();
+    fetchTemperatures();
     return () => { cancelled = true; };
   }, [weeksToShow, animals.length]);
 
@@ -252,13 +215,23 @@ const BodyWeight = () => {
     if (penFilter) list = list.filter(a => String(getAnimalPenId(a) || '') === String(penFilter));
     if (sexFilter) list = list.filter(a => a.sex === sexFilter);
     if (breedFilter) list = list.filter(a => a.breedType === breedFilter);
-    const min = minWeight === '' ? null : parseFloat(minWeight);
-    const max = maxWeight === '' ? null : parseFloat(maxWeight);
-    if (min !== null && !isNaN(min)) list = list.filter(a => (Number(a.weight) || 0) >= min);
-    if (max !== null && !isNaN(max)) list = list.filter(a => (Number(a.weight) || 0) <= max);
+    const min = minTemp === '' ? null : parseFloat(minTemp);
+    const max = maxTemp === '' ? null : parseFloat(maxTemp);
+    if (min !== null && !isNaN(min)) {
+      list = list.filter(a => {
+        const lastTemp = temperatureRecords.find(r => String(r.animal?._id || r.animal || '') === String(getId(a)));
+        return lastTemp ? Number(lastTemp.temperature) >= min : true;
+      });
+    }
+    if (max !== null && !isNaN(max)) {
+      list = list.filter(a => {
+        const lastTemp = temperatureRecords.find(r => String(r.animal?._id || r.animal || '') === String(getId(a)));
+        return lastTemp ? Number(lastTemp.temperature) <= max : true;
+      });
+    }
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batchAnimals, search, penFilter, sexFilter, breedFilter, minWeight, maxWeight, pens]);
+  }, [batchAnimals, search, penFilter, sexFilter, breedFilter, minTemp, maxTemp, temperatureRecords, pens]);
 
   // ── Dynamic week columns (per batch or global) ──
   const weekColumns = useMemo(() => {
@@ -322,26 +295,6 @@ const BodyWeight = () => {
     return Math.floor(diffDays / 7) + 1;
   };
 
-  // ── Weight lookup map: animalId|weekStart → { weight, date } ──
-  const weightsByAnimalWeek = useMemo(() => {
-    const map = new Map();
-    const weekSet = new Set(weekColumns);
-    for (const r of weightRecords || []) {
-      const animalId = String(r.animal?._id || r.animal || r.animalId || '').trim();
-      if (!animalId) continue;
-      const weekStart = getWeekStartISO(r.date);
-      if (!weekStart || !weekSet.has(weekStart)) continue;
-
-      const key = `${animalId}|${weekStart}`;
-      const existing = map.get(key);
-      const rDate = new Date(r.date);
-      if (!existing || new Date(existing.date) < rDate) {
-        map.set(key, { weight: r.weight, date: r.date });
-      }
-    }
-    return map;
-  }, [weightRecords, weekColumns]);
-
   // ── Temperature lookup map: animalId|weekStart → { temperature, date } ──
   const tempsByAnimalWeek = useMemo(() => {
     const map = new Map();
@@ -373,8 +326,9 @@ const BodyWeight = () => {
     const newErrors = {};
     if (!formData.animalId) newErrors.animalId = 'Select an animal';
     if (!formData.date) newErrors.date = 'Date is required';
-    if (!formData.weight || parseFloat(formData.weight) <= 0) {
-      newErrors.weight = 'Enter a valid weight';
+    const temp = parseFloat(formData.temperature);
+    if (!formData.temperature || isNaN(temp) || temp < 20 || temp > 50) {
+      newErrors.temperature = 'Enter a valid temperature (20–50°C)';
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -388,27 +342,22 @@ const BodyWeight = () => {
     try {
       const animalIdKey = String(formData.animalId).trim();
       const animal = animals.find(a => String(getId(a)) === animalIdKey);
-      const weightData = {
+      const tempData = {
         animal: animalIdKey,
         animalTagId: animal?.tagId,
         animalName: animal?.name,
         date: formData.date,
-        weight: parseFloat(formData.weight)
+        temperature: parseFloat(formData.temperature)
       };
 
-      const response = await healthAPI.createWeightRecord(weightData);
+      const response = await healthAPI.createTemperatureRecord(tempData);
       if (response.success) {
-        setAnimals(prev => prev.map(a =>
-          String(getId(a)) === animalIdKey
-            ? { ...a, weight: parseFloat(formData.weight), weightDate: formData.date }
-            : a
-        ));
-        setWeightRecords(prev => [response.data, ...prev]);
-        toast.success('Weight recorded successfully');
+        setTemperatureRecords(prev => [response.data, ...prev]);
+        toast.success('Temperature recorded successfully');
         closeModal();
       }
     } catch (error) {
-      toast.error(error.message || 'Failed to record weight');
+      toast.error(error.message || 'Failed to record temperature');
     } finally {
       setSubmitting(false);
     }
@@ -419,7 +368,7 @@ const BodyWeight = () => {
     setFormData({
       animalId: animal ? String(getId(animal)) : '',
       date: new Date().toISOString().split('T')[0],
-      weight: ''
+      temperature: ''
     });
     setErrors({});
     setModalOpen(true);
@@ -428,7 +377,7 @@ const BodyWeight = () => {
   const closeModal = () => {
     setModalOpen(false);
     setSelectedAnimal(null);
-    setFormData({ animalId: '', date: new Date().toISOString().split('T')[0], weight: '' });
+    setFormData({ animalId: '', date: new Date().toISOString().split('T')[0], temperature: '' });
     setErrors({});
   };
 
@@ -491,33 +440,13 @@ const BodyWeight = () => {
       const errorsList = [];
       const first = rows[0] || {};
       const allKeys = Object.keys(first);
-      const weekHeaderMap = new Map();
-
-      for (const key of allKeys) {
-        const match = String(key).match(/^Week of\s+(\d{4}-\d{2}-\d{2})(?:\s*\(([^)]+)\))?$/i);
-        if (!match) continue;
-        const weekISO = toISODate(match[1]);
-        if (!weekISO) continue;
-
-        const suffix = String(match[2] || 'weight').toLowerCase();
-        const entry = weekHeaderMap.get(weekISO) || {};
-
-        if (suffix.includes('temp')) {
-          entry.tempKey = key;
-        } else {
-          entry.weightKey = key;
-        }
-
-        weekHeaderMap.set(weekISO, entry);
-      }
-
-      const weekKeys = Array.from(weekHeaderMap.keys());
+      const weekKeys = allKeys.filter(k => String(k).toLowerCase().startsWith('week of '));
 
       if (!allKeys.includes('Tag ID')) {
         errorsList.push('Missing required column: Tag ID');
       }
       if (!weekKeys.length) {
-        errorsList.push('No week columns found. Expected columns like: "Week of YYYY-MM-DD (Weight kg)" and "Week of YYYY-MM-DD (Body Temp C)"');
+        errorsList.push('No week columns found. Expected columns like: "Week of YYYY-MM-DD"');
       }
 
       for (let i = 0; i < rows.length; i++) {
@@ -529,32 +458,18 @@ const BodyWeight = () => {
         if (!tagIdRaw) { errorsList.push(`Row ${i + 2}: Tag ID is missing`); continue; }
         if (!animal) { errorsList.push(`Row ${i + 2}: Tag ID "${tagIdRaw}" not found in your animals`); continue; }
 
-        for (const wkISO of weekKeys) {
-          const wkFields = weekHeaderMap.get(wkISO) || {};
-          const weightVal = wkFields.weightKey ? r[wkFields.weightKey] : null;
-          const tempVal = wkFields.tempKey ? r[wkFields.tempKey] : null;
+        for (const wk of weekKeys) {
+          const wkDateStr = String(wk).replace(/^Week of\s*/i, '').trim();
+          const wkISO = toISODate(wkDateStr);
+          if (!wkISO) { errorsList.push(`Header "${wk}": invalid date. Use YYYY-MM-DD`); continue; }
 
-          const hasWeight = !(weightVal === null || weightVal === undefined || String(weightVal).trim() === '');
-          const hasTemp = !(tempVal === null || tempVal === undefined || String(tempVal).trim() === '');
-          if (!hasWeight && !hasTemp) continue;
+          const val = r[wk];
+          if (val === null || val === undefined || String(val).trim() === '') continue;
 
-          let weightNum = null;
-          let tempNum = null;
-
-          if (hasWeight) {
-            weightNum = parseFloat(String(weightVal).replace(/,/g, ''));
-            if (isNaN(weightNum) || weightNum <= 0) {
-              errorsList.push(`Row ${i + 2} (${tagIdRaw}) Week of ${wkISO} weight: invalid value "${weightVal}"`);
-              continue;
-            }
-          }
-
-          if (hasTemp) {
-            tempNum = parseFloat(String(tempVal).replace(/,/g, ''));
-            if (isNaN(tempNum) || tempNum < 20 || tempNum > 50) {
-              errorsList.push(`Row ${i + 2} (${tagIdRaw}) Week of ${wkISO} body temp: invalid value "${tempVal}" (must be 20-50)`);
-              continue;
-            }
+          const num = parseFloat(String(val).replace(/,/g, ''));
+          if (isNaN(num) || num < 20 || num > 50) {
+            errorsList.push(`Row ${i + 2} (${tagIdRaw}) ${wk}: invalid temperature "${val}" (must be 20–50°C)`);
+            continue;
           }
 
           parsed.push({
@@ -564,8 +479,7 @@ const BodyWeight = () => {
             penName: getAnimalPenName(animal),
             weekStart: wkISO,
             date: wkISO,
-            weight: weightNum,
-            temperature: tempNum,
+            temperature: num,
             status: 'ready',
             errors: []
           });
@@ -573,47 +487,16 @@ const BodyWeight = () => {
       }
 
       const dedup = new Map();
-      for (const item of parsed) {
-        const key = `${item.animalId}|${item.date}`;
-        const existing = dedup.get(key);
-        if (existing) {
-          dedup.set(key, {
-            ...existing,
-            weight: item.weight ?? existing.weight,
-            temperature: item.temperature ?? existing.temperature
-          });
-        } else {
-          dedup.set(key, item);
-        }
-      }
-
-      // Filter out rows where values match what's already recorded
-      const finalPreview = Array.from(dedup.values()).filter(item => {
-        const key = `${item.animalId}|${item.weekStart}`;
-        const existingWeight = weightsByAnimalWeek.get(key);
-        const existingTemp = tempsByAnimalWeek.get(key);
-
-        const weightChanged = item.weight != null &&
-          (!existingWeight || Number(existingWeight.weight) !== item.weight);
-        const tempChanged = item.temperature != null &&
-          (!existingTemp || Number(existingTemp.temperature) !== item.temperature);
-
-        // Strip out unchanged values so we only upload what's new/different
-        if (!weightChanged) item.weight = null;
-        if (!tempChanged) item.temperature = null;
-
-        return weightChanged || tempChanged;
-      });
+      for (const item of parsed) dedup.set(`${item.animalId}|${item.date}`, item);
+      const finalPreview = Array.from(dedup.values());
 
       setImportPreview(finalPreview);
       setImportErrors(errorsList);
 
       if (errorsList.length) {
         toast.error('Some issues found in the file. Please review.');
-      } else if (finalPreview.length === 0) {
-        toast.success('No changes detected — all values match existing records');
       } else {
-        toast.success(`${finalPreview.length} new/changed update(s) ready`);
+        toast.success(`${finalPreview.length} temperature update(s) ready`);
       }
     } catch (err) {
       console.error(err);
@@ -626,96 +509,50 @@ const BodyWeight = () => {
     if (importErrors.length) { toast.error('Please fix the errors before importing'); return; }
 
     setImporting(true);
-    try {
-      // Separate into weight and temperature records
-      const weightRecordsBulk = [];
-      const tempRecordsBulk = [];
+    let ok = 0;
+    let fail = 0;
+    const failures = [];
+    const chunkSize = 25;
+    const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
-      for (const item of importPreview) {
-        if (item.weight != null) {
-          weightRecordsBulk.push({
-            animal: item.animalId,
-            date: item.date,
-            weight: item.weight
-          });
-        }
-        if (item.temperature != null) {
-          tempRecordsBulk.push({
+    for (let i = 0; i < importPreview.length; i += chunkSize) {
+      const chunk = importPreview.slice(i, i + chunkSize);
+      const results = await Promise.all(chunk.map(async (item) => {
+        try {
+          const res = await healthAPI.createTemperatureRecord({
             animal: item.animalId,
             date: item.date,
             temperature: item.temperature
           });
-        }
-      }
-
-      let weightResult = null;
-      let tempResult = null;
-      const failures = [];
-
-      // Send weight records in one bulk request
-      if (weightRecordsBulk.length > 0) {
-        try {
-          const res = await healthAPI.bulkCreateWeightRecords(weightRecordsBulk);
-          if (res.success) {
-            weightResult = res.data;
-            // Update local state with created records
-            if (weightResult.created?.length) {
-              setWeightRecords(prev => [...weightResult.created, ...prev]);
-              for (const rec of weightResult.created) {
-                const aId = String(rec.animal?._id || rec.animal || '');
-                setAnimals(prev => prev.map(a =>
-                  String(getId(a)) === aId ? { ...a, weight: rec.weight, weightDate: rec.date } : a
-                ));
-              }
-            }
-            if (weightResult.errors?.length) {
-              for (const e of weightResult.errors) {
-                failures.push(`Weight #${e.index + 1}: ${e.message}`);
-              }
-            }
-          } else {
-            failures.push(`Weight bulk upload failed: ${res.message || 'Unknown error'}`);
-          }
+          return { item, res };
         } catch (e) {
-          failures.push(`Weight bulk upload failed: ${e.message || 'Unknown error'}`);
+          return { item, err: e };
+        }
+      }));
+
+      for (const r of results) {
+        const { item, res, err } = r;
+        if (err) {
+          fail++;
+          failures.push(`${item.tagId} (${item.date}): ${err.message || 'Failed'}`);
+        } else if (res?.success) {
+          ok++;
+          setTemperatureRecords(prev => [res.data, ...prev]);
+        } else {
+          fail++;
+          failures.push(`${item.tagId} (${item.date}): ${res?.message || 'Failed'}`);
         }
       }
+      if (i + chunkSize < importPreview.length) await sleep(300);
+    }
 
-      // Send temperature records in one bulk request
-      if (tempRecordsBulk.length > 0) {
-        try {
-          const res = await healthAPI.bulkCreateTemperatureRecords(tempRecordsBulk);
-          if (res.success) {
-            tempResult = res.data;
-            if (tempResult.created?.length) {
-              setTemperatureRecords(prev => [...tempResult.created, ...prev]);
-            }
-            if (tempResult.errors?.length) {
-              for (const e of tempResult.errors) {
-                failures.push(`Temp #${e.index + 1}: ${e.message}`);
-              }
-            }
-          } else {
-            failures.push(`Temperature bulk upload failed: ${res.message || 'Unknown error'}`);
-          }
-        } catch (e) {
-          failures.push(`Temperature bulk upload failed: ${e.message || 'Unknown error'}`);
-        }
-      }
-
-      const totalCreated = (weightResult?.created?.length || 0) + (tempResult?.created?.length || 0);
-
-      if (failures.length === 0) {
-        toast.success(`Imported ${totalCreated} record(s)`);
-        closeImport();
-      } else {
-        setImportErrors([`Created ${totalCreated} record(s).`, `${failures.length} issue(s):`, ...failures.slice(0, 20)]);
-        toast.error(`${failures.length} issue(s) during import`);
-      }
-    } catch (err) {
-      toast.error(err.message || 'Bulk import failed');
-    } finally {
-      setImporting(false);
+    setImporting(false);
+    if (fail === 0) {
+      toast.success(`Imported ${ok} record(s)`);
+      closeImport();
+    } else {
+      setImportErrors([`Imported ${ok} record(s).`, `${fail} failed:`, ...failures.slice(0, 20)]);
+      toast.error(`${fail} update(s) failed`);
     }
   };
 
@@ -729,24 +566,19 @@ const BodyWeight = () => {
     const selectedBatchData = batches.find(b => b.key === selectedBatch);
     const sheetLabel = selectedBatchData ? `${selectedBatchData.label} Batch` : 'All Animals';
 
-    const headers = ['Tag ID', 'Name', 'Pen', 'Sex', 'Breed', 'Current Weight (kg)'];
-    const weekHeaders = weekColumns.flatMap(w => [
-      `Week of ${w} (Weight kg)`,
-      `Week of ${w} (Body Temp C)`
-    ]);
+    const headers = ['Tag ID', 'Name', 'Pen', 'Sex', 'Breed'];
+    const weekHeaders = weekColumns.map(w => `Week of ${w}`);
     const aoa = [headers.concat(weekHeaders)];
 
     for (const a of filteredAnimals) {
       const animalId = String(getId(a));
       const row = [
         a.tagId || '', a.name || '', getAnimalPenName(a),
-        a.sex || '', a.breedType || '', Number(a.weight) || 0
+        a.sex || '', a.breedType || ''
       ];
       for (const w of weekColumns) {
-        const weightCell = weightsByAnimalWeek.get(`${animalId}|${w}`);
-        const tempCell = tempsByAnimalWeek.get(`${animalId}|${w}`);
-        row.push(weightCell?.weight ?? '');
-        row.push(tempCell?.temperature ?? '');
+        const cell = tempsByAnimalWeek.get(`${animalId}|${w}`);
+        row.push(cell?.temperature ?? '');
       }
       aoa.push(row);
     }
@@ -758,21 +590,21 @@ const BodyWeight = () => {
 
     const headerRow = sheet.getRow(1);
     headerRow.font = { bold: true };
-    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F0FE' } };
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE4EC' } };
 
     const instructions = [
-      ['Body Weight Import/Export'],
+      ['Body Temperature Import/Export'],
       [''],
       [selectedBatchData ? `Batch: ${selectedBatchData.label} (${selectedBatchData.count} animals)` : 'All Animals'],
       [''],
       ['How to import:'],
       ['- Keep the same headers'],
-      ['- Fill weight cells with numeric values (kg) and body temp cells in C'],
+      ['- Fill temperature cells with numeric values (°C, range 20–50)'],
       ['- Leave empty cells blank (no update)'],
       ['- Tag ID is used to match animals'],
-      ['- Week columns come in pairs: "Week of YYYY-MM-DD (Weight kg)" and "Week of YYYY-MM-DD (Body Temp C)"'],
+      ['- You can add new "Week of YYYY-MM-DD" columns for additional weeks'],
       [''],
-      ['Note: Week columns use the week-start date (Monday). Import can record both weight and temperature for the same date.']
+      ['Note: Week columns use the week-start date (Monday). The import will record temperature on that date.']
     ];
     const insSheet = wb.addWorksheet('Instructions');
     insSheet.getColumn(1).width = 70;
@@ -784,7 +616,7 @@ const BodyWeight = () => {
     const a = document.createElement('a');
     a.href = url;
     const batchSuffix = selectedBatchData ? `_${selectedBatchData.key}` : '';
-    a.download = `body_weight${batchSuffix}_${toISODate(new Date())}.xlsx`;
+    a.download = `body_temperature${batchSuffix}_${toISODate(new Date())}.xlsx`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -797,38 +629,50 @@ const BodyWeight = () => {
     return new Set(batchAnimals.map(a => String(getId(a))));
   }, [batchAnimals]);
 
-  const avgWeight = batchAnimals.length > 0
-    ? (batchAnimals.reduce((sum, a) => sum + (a.weight || 0), 0) / batchAnimals.length).toFixed(1)
-    : 0;
-  const totalWeight = batchAnimals.reduce((sum, a) => sum + (a.weight || 0), 0);
-  const weightedThisMonth = weightRecords.filter(w => {
-    const recordDate = new Date(w.date);
+  const batchTempRecords = useMemo(() => {
+    return temperatureRecords.filter(r => {
+      const animalId = String(r.animal?._id || r.animal || r.animalId || '');
+      return batchAnimalIds.has(animalId);
+    });
+  }, [temperatureRecords, batchAnimalIds]);
+
+  const avgTemperature = useMemo(() => {
+    if (!batchTempRecords.length) return '—';
+    const sum = batchTempRecords.reduce((acc, r) => acc + (Number(r.temperature) || 0), 0);
+    return (sum / batchTempRecords.length).toFixed(1);
+  }, [batchTempRecords]);
+
+  const recordedThisMonth = useMemo(() => {
     const now = new Date();
-    const animalId = String(w.animal?._id || w.animal || w.animalId || '');
-    return recordDate.getMonth() === now.getMonth() &&
-      recordDate.getFullYear() === now.getFullYear() &&
-      batchAnimalIds.has(animalId);
-  }).length;
+    return batchTempRecords.filter(r => {
+      const d = new Date(r.date);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }).length;
+  }, [batchTempRecords]);
+
+  const highTempCount = useMemo(() => {
+    return batchTempRecords.filter(r => Number(r.temperature) > 40).length;
+  }, [batchTempRecords]);
 
   const recentRecords = useMemo(() => {
-    if (selectedBatch === 'all') return weightRecords.slice(0, 10);
-    return weightRecords
+    if (selectedBatch === 'all') return temperatureRecords.slice(0, 10);
+    return temperatureRecords
       .filter(r => batchAnimalIds.has(String(r.animal?._id || r.animal || r.animalId || '')))
       .slice(0, 10);
-  }, [weightRecords, selectedBatch, batchAnimalIds]);
+  }, [temperatureRecords, selectedBatch, batchAnimalIds]);
 
   if (loading) {
     return <PageLoader />;
   }
 
-  return ( 
+  return (
     <div className="space-y-6">
       <PageHeader
-        title="Body Weight Tracking"
-        subtitle="Track weights weekly by batch with filters + Excel import/export"
+        title="Body Temperature Tracking"
+        subtitle="Track temperatures weekly by batch with filters + Excel import/export"
         breadcrumbs={[
           { label: 'Health Management' },
-          { label: 'Body Weight' }
+          { label: 'Body Temperature' }
         ]}
         action={
           <div className="flex flex-wrap gap-2">
@@ -839,7 +683,7 @@ const BodyWeight = () => {
               Import Excel
             </Button>
             <Button icon={HiOutlinePlus} onClick={() => openModal()}>
-              Record Weight
+              Record Temperature
             </Button>
           </div>
         }
@@ -856,7 +700,7 @@ const BodyWeight = () => {
                 </p>
                 <p className="text-2xl font-bold mt-1">{batchAnimals.length}</p>
               </div>
-              <HiOutlineScale className="w-8 h-8 text-blue-200" />
+              <HiOutlineFire className="w-8 h-8 text-blue-200" />
             </div>
           </div>
         </Card>
@@ -864,21 +708,21 @@ const BodyWeight = () => {
           <div className="text-white">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-emerald-100 text-sm">Average Weight</p>
-                <p className="text-2xl font-bold mt-1">{avgWeight} kg</p>
+                <p className="text-emerald-100 text-sm">Avg Temperature</p>
+                <p className="text-2xl font-bold mt-1">{avgTemperature !== '—' ? `${avgTemperature} °C` : '—'}</p>
               </div>
               <HiOutlineTrendingUp className="w-8 h-8 text-emerald-200" />
             </div>
           </div>
         </Card>
-        <Card className="bg-gradient-to-br from-purple-500 to-purple-600">
+        <Card className="bg-gradient-to-br from-red-500 to-red-600">
           <div className="text-white">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-purple-100 text-sm">Total Weight</p>
-                <p className="text-2xl font-bold mt-1">{totalWeight} kg</p>
+                <p className="text-red-100 text-sm">High Temp (&gt;40°C)</p>
+                <p className="text-2xl font-bold mt-1">{highTempCount}</p>
               </div>
-              <HiOutlineScale className="w-8 h-8 text-purple-200" />
+              <HiOutlineFire className="w-8 h-8 text-red-200" />
             </div>
           </div>
         </Card>
@@ -886,8 +730,8 @@ const BodyWeight = () => {
           <div className="text-white">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-orange-100 text-sm">Weighed This Month</p>
-                <p className="text-2xl font-bold mt-1">{weightedThisMonth}</p>
+                <p className="text-orange-100 text-sm">Recorded This Month</p>
+                <p className="text-2xl font-bold mt-1">{recordedThisMonth}</p>
               </div>
               <HiOutlineTrendingUp className="w-8 h-8 text-orange-200" />
             </div>
@@ -952,10 +796,10 @@ const BodyWeight = () => {
         <div className="flex flex-col gap-4 mb-6">
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
             <div>
-              <h3 className="text-lg font-semibold text-gray-800">Weekly Weight Table</h3>
+              <h3 className="text-lg font-semibold text-gray-800">Weekly Temperature Table</h3>
               <p className="text-sm text-gray-500">
                 {filteredAnimals.length} animal(s) &bull; {weekColumns.length} week column(s)
-                {weightLoading && <span className="ml-2 text-blue-500 animate-pulse">Loading weights...</span>}
+                {tempLoading && <span className="ml-2 text-blue-500 animate-pulse">Loading temperatures...</span>}
               </p>
             </div>
             <div className="w-full lg:w-72">
@@ -1003,18 +847,18 @@ const BodyWeight = () => {
               placeholder="All"
             />
             <Input
-              label="Min Weight (kg)"
+              label="Min Temp (°C)"
               type="number"
-              value={minWeight}
-              onChange={(e) => setMinWeight(e.target.value)}
-              placeholder="e.g. 30"
+              value={minTemp}
+              onChange={(e) => setMinTemp(e.target.value)}
+              placeholder="e.g. 38"
             />
             <Input
-              label="Max Weight (kg)"
+              label="Max Temp (°C)"
               type="number"
-              value={maxWeight}
-              onChange={(e) => setMaxWeight(e.target.value)}
-              placeholder="e.g. 80"
+              value={maxTemp}
+              onChange={(e) => setMaxTemp(e.target.value)}
+              placeholder="e.g. 40"
             />
             <Select
               label="Time Range"
@@ -1037,14 +881,13 @@ const BodyWeight = () => {
           </div>
         </div>
 
-        {/* Weekly Weight Table */}
+        {/* Weekly Temperature Table */}
         <div className="overflow-x-auto border border-gray-200 rounded-xl">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 z-10">Animal</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-[220px] bg-gray-50 z-10 hidden md:table-cell">Pen</th>
-                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current</th>
                 {weekColumns.map(w => {
                   const wn = getWeekNumber(w);
                   return (
@@ -1060,7 +903,7 @@ const BodyWeight = () => {
             <tbody className="divide-y divide-gray-200 bg-white">
               {filteredAnimals.length === 0 ? (
                 <tr>
-                  <td colSpan={4 + weekColumns.length} className="py-12 text-center text-gray-500">
+                  <td colSpan={3 + weekColumns.length} className="py-12 text-center text-gray-500">
                     No animals match your filters
                   </td>
                 </tr>
@@ -1071,8 +914,8 @@ const BodyWeight = () => {
                     <tr key={animalId} className="hover:bg-gray-50">
                       <td className="px-3 py-3 sticky left-0 bg-white z-10">
                         <div className="flex items-center gap-3 w-[220px]">
-                          <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                            <GiSheep className="w-5 h-5 text-emerald-600" />
+                          <div className="w-9 h-9 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
+                            <GiSheep className="w-5 h-5 text-red-500" />
                           </div>
                           <div className="min-w-0">
                             <p className="font-semibold text-gray-900 text-sm truncate">{a.tagId} &bull; {a.name}</p>
@@ -1083,30 +926,25 @@ const BodyWeight = () => {
                       <td className="px-3 py-3 sticky left-[220px] bg-white z-10 hidden md:table-cell">
                         <span className="text-sm text-gray-700">{getAnimalPenName(a)}</span>
                       </td>
-                      <td className="px-3 py-3">
-                        <div>
-                          <span className="font-semibold text-gray-900">{Number(a.weight) || 0}</span>
-                          <span className="text-xs text-gray-500"> kg</span>
-                          <p className="text-xs text-gray-400">
-                            {a.weightDate ? formatDate(a.weightDate).split(',')[0] : 'No date'}
-                          </p>
-                        </div>
-                      </td>
                       {weekColumns.map((w, wi) => {
-                        const cell = weightsByAnimalWeek.get(`${animalId}|${w}`);
-                        const currentWeight = cell?.weight != null ? Number(cell.weight) : null;
+                        const cell = tempsByAnimalWeek.get(`${animalId}|${w}`);
+                        const currentTemp = cell?.temperature != null ? Number(cell.temperature) : null;
                         const prevWeek = wi > 0 ? weekColumns[wi - 1] : null;
-                        const prevCell = prevWeek ? weightsByAnimalWeek.get(`${animalId}|${prevWeek}`) : null;
-                        const prevWeight = prevCell?.weight != null ? Number(prevCell.weight) : null;
+                        const prevCell = prevWeek ? tempsByAnimalWeek.get(`${animalId}|${prevWeek}`) : null;
+                        const prevTemp = prevCell?.temperature != null ? Number(prevCell.temperature) : null;
 
                         let cellBg = '';
-                        if (currentWeight != null) {
-                          if (prevWeight == null) {
-                            cellBg = 'bg-yellow-50 text-yellow-900';
-                          } else if (currentWeight > prevWeight) {
-                            cellBg = 'bg-green-50 text-green-800';
-                          } else if (currentWeight < prevWeight) {
+                        if (currentTemp != null) {
+                          if (currentTemp > 40) {
                             cellBg = 'bg-red-50 text-red-800';
+                          } else if (currentTemp < 38.5) {
+                            cellBg = 'bg-blue-50 text-blue-800';
+                          } else if (prevTemp == null) {
+                            cellBg = 'bg-yellow-50 text-yellow-900';
+                          } else if (currentTemp > prevTemp) {
+                            cellBg = 'bg-orange-50 text-orange-800';
+                          } else if (currentTemp < prevTemp) {
+                            cellBg = 'bg-green-50 text-green-800';
                           } else {
                             cellBg = 'bg-yellow-50 text-yellow-900';
                           }
@@ -1114,8 +952,8 @@ const BodyWeight = () => {
 
                         return (
                           <td key={w} className={`px-3 py-3 text-center whitespace-nowrap ${cellBg}`}>
-                            {currentWeight != null ? (
-                              <span className="text-sm font-medium">{cell.weight}</span>
+                            {currentTemp != null ? (
+                              <span className="text-sm font-medium">{cell.temperature}</span>
                             ) : (
                               <span className="text-sm text-gray-300">-</span>
                             )}
@@ -1141,10 +979,10 @@ const BodyWeight = () => {
         </div>
       </Card>
 
-      {/* Recent Weight Records */}
+      {/* Recent Temperature Records */}
       <Card>
         <h3 className="text-lg font-semibold text-gray-800 mb-4">
-          Recent Weight Records
+          Recent Temperature Records
           {selectedBatch !== 'all' && (
             <span className="text-sm font-normal text-gray-500 ml-2">
               ({batches.find(b => b.key === selectedBatch)?.label || 'Batch'})
@@ -1155,16 +993,16 @@ const BodyWeight = () => {
           <TableHead>
             <TableHeader>Date</TableHeader>
             <TableHeader>Animal</TableHeader>
-            <TableHeader>Previous Weight</TableHeader>
-            <TableHeader>New Weight</TableHeader>
+            <TableHeader>Previous Temp</TableHeader>
+            <TableHeader>New Temp</TableHeader>
             <TableHeader>Change</TableHeader>
           </TableHead>
           <TableBody>
             {recentRecords.length === 0 ? (
-              <TableEmpty message="No weight records yet" colSpan={5} />
+              <TableEmpty message="No temperature records yet" colSpan={5} />
             ) : (
               recentRecords.map((record) => {
-                const change = record.weight - (record.previousWeight || 0);
+                const change = Number((record.temperature - (record.previousTemperature || 0)).toFixed(2));
                 return (
                   <TableRow key={getId(record)}>
                     <TableCell>
@@ -1172,8 +1010,8 @@ const BodyWeight = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                          <GiSheep className="w-4 h-4 text-emerald-600" />
+                        <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
+                          <GiSheep className="w-4 h-4 text-red-500" />
                         </div>
                         <div>
                           <p className="font-medium text-sm">{record.tagId || record.animalTagId}</p>
@@ -1182,28 +1020,34 @@ const BodyWeight = () => {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className="text-gray-500">{record.previousWeight || 0} kg</span>
+                      <span className="text-gray-500">{record.previousTemperature || 0} °C</span>
                     </TableCell>
                     <TableCell>
-                      <span className="font-semibold">{record.weight} kg</span>
+                      <span className={`font-semibold ${record.temperature > 40 ? 'text-red-600' : record.temperature < 38.5 ? 'text-blue-600' : 'text-emerald-600'}`}>
+                        {record.temperature} °C
+                      </span>
                     </TableCell>
                     <TableCell>
-                      <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-sm ${
-                        change > 0
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : change < 0
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {change > 0 ? (
-                          <HiOutlineTrendingUp className="w-4 h-4" />
-                        ) : change < 0 ? (
-                          <HiOutlineTrendingDown className="w-4 h-4" />
-                        ) : null}
-                        <span className="font-medium">
-                          {change > 0 ? '+' : ''}{change.toFixed(1)} kg
-                        </span>
-                      </div>
+                      {record.previousTemperature ? (
+                        <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-sm ${
+                          change > 0
+                            ? 'bg-orange-100 text-orange-700'
+                            : change < 0
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {change > 0 ? (
+                            <HiOutlineTrendingUp className="w-4 h-4" />
+                          ) : change < 0 ? (
+                            <HiOutlineTrendingDown className="w-4 h-4" />
+                          ) : null}
+                          <span className="font-medium">
+                            {change > 0 ? '+' : ''}{change} °C
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-sm">First record</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 );
@@ -1217,7 +1061,7 @@ const BodyWeight = () => {
       <Modal
         isOpen={importOpen}
         onClose={closeImport}
-        title="Import Body Weights (Excel)"
+        title="Import Body Temperatures (Excel)"
         size="lg"
       >
         <div className="space-y-5">
@@ -1226,10 +1070,10 @@ const BodyWeight = () => {
               Upload the Excel you exported from this page. We'll validate it and show a preview before applying updates.
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              Required: <span className="font-medium">Tag ID</span> column and week columns like <span className="font-medium">Week of 2026-01-05 (Weight kg)</span> and <span className="font-medium">Week of 2026-01-05 (Body Temp C)</span>.
+              Required: <span className="font-medium">Tag ID</span> column and week columns like <span className="font-medium">Week of 2026-01-05</span>.
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              Temperature values must be numeric and between 20 and 50.
+              Temperature values must be numeric and between 20–50°C.
             </p>
           </div>
 
@@ -1282,8 +1126,7 @@ const BodyWeight = () => {
                   <TableHeader>Animal</TableHeader>
                   <TableHeader>Pen</TableHeader>
                   <TableHeader>Week</TableHeader>
-                  <TableHeader>Weight (kg)</TableHeader>
-                  <TableHeader>Body Temp (C)</TableHeader>
+                  <TableHeader>Temp (°C)</TableHeader>
                 </TableHead>
                 <TableBody>
                   {importPreview.slice(0, 200).map((p, idx) => (
@@ -1292,13 +1135,12 @@ const BodyWeight = () => {
                       <TableCell>{p.animalName}</TableCell>
                       <TableCell>{p.penName}</TableCell>
                       <TableCell>{p.weekStart}</TableCell>
-                      <TableCell><span className="font-semibold">{p.weight ?? '-'}</span></TableCell>
-                      <TableCell><span className="font-semibold">{p.temperature ?? '-'}</span></TableCell>
+                      <TableCell><span className="font-semibold">{p.temperature}</span></TableCell>
                     </TableRow>
                   ))}
                   {importPreview.length > 200 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-sm text-gray-500 py-3">
+                      <TableCell colSpan={5} className="text-center text-sm text-gray-500 py-3">
                         Showing first 200 updates&hellip;
                       </TableCell>
                     </TableRow>
@@ -1310,11 +1152,11 @@ const BodyWeight = () => {
         </div>
       </Modal>
 
-      {/* Record Weight Modal */}
+      {/* Record Temperature Modal */}
       <Modal
         isOpen={modalOpen}
         onClose={closeModal}
-        title="Record Weight"
+        title="Record Temperature"
         size="md"
       >
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -1325,7 +1167,7 @@ const BodyWeight = () => {
             onChange={handleChange}
             options={animals.map(a => ({
               value: getId(a),
-              label: `${a.tagId} - ${a.name} (Current: ${a.weight || 0} kg)`
+              label: `${a.tagId} - ${a.name}`
             }))}
             placeholder="Choose an animal"
             error={errors.animalId}
@@ -1339,14 +1181,13 @@ const BodyWeight = () => {
                 const animal = animals.find(a => String(getId(a)) === String(formData.animalId));
                 return animal ? (
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center">
-                      <GiSheep className="w-7 h-7 text-emerald-600" />
+                    <div className="w-12 h-12 rounded-xl bg-red-100 flex items-center justify-center">
+                      <GiSheep className="w-7 h-7 text-red-500" />
                     </div>
                     <div>
                       <p className="font-semibold">{animal.name}</p>
                       <p className="text-sm text-gray-500">
-                        Current: {animal.weight || 0} kg &bull;{' '}
-                        Last: {animal.weightDate ? formatDate(animal.weightDate) : 'Never'}
+                        {animal.tagId} &bull; {animal.breedType} &bull; {animal.sex}
                       </p>
                     </div>
                   </div>
@@ -1366,34 +1207,43 @@ const BodyWeight = () => {
               required
             />
             <Input
-              label="Weight"
+              label="Temperature"
               type="number"
-              name="weight"
-              value={formData.weight}
+              name="temperature"
+              value={formData.temperature}
               onChange={handleChange}
-              placeholder="Enter weight"
-              suffix="kg"
-              error={errors.weight}
+              placeholder="e.g. 39.2"
+              suffix="°C"
+              error={errors.temperature}
               required
+              step="0.1"
             />
           </div>
 
-          {formData.weight && formData.animalId && (
-            <div className="p-4 bg-emerald-50 rounded-xl">
-              {(() => {
-                const animal = animals.find(a => String(getId(a)) === String(formData.animalId));
-                const change = parseFloat(formData.weight) - (animal?.weight || 0);
-                return (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Weight Change:</span>
-                    <span className={`font-semibold ${
-                      change > 0 ? 'text-emerald-600' : change < 0 ? 'text-red-600' : 'text-gray-600'
-                    }`}>
-                      {change > 0 ? '+' : ''}{change.toFixed(1)} kg
-                    </span>
-                  </div>
-                );
-              })()}
+          {formData.temperature && (
+            <div className={`p-4 rounded-xl ${
+              parseFloat(formData.temperature) > 40
+                ? 'bg-red-50'
+                : parseFloat(formData.temperature) < 38.5
+                  ? 'bg-blue-50'
+                  : 'bg-emerald-50'
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">Status:</span>
+                <span className={`font-semibold text-sm ${
+                  parseFloat(formData.temperature) > 40
+                    ? 'text-red-600'
+                    : parseFloat(formData.temperature) < 38.5
+                      ? 'text-blue-600'
+                      : 'text-emerald-600'
+                }`}>
+                  {parseFloat(formData.temperature) > 40
+                    ? 'High (Fever)'
+                    : parseFloat(formData.temperature) < 38.5
+                      ? 'Low (Hypothermia risk)'
+                      : 'Normal (38.5–40°C)'}
+                </span>
+              </div>
             </div>
           )}
 
@@ -1402,7 +1252,7 @@ const BodyWeight = () => {
               Cancel
             </Button>
             <Button type="submit" loading={submitting}>
-              Record Weight
+              Record Temperature
             </Button>
           </div>
         </form>
@@ -1411,4 +1261,4 @@ const BodyWeight = () => {
   );
 };
 
-export default BodyWeight;
+export default BodyTemperature;

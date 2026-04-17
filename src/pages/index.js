@@ -31,8 +31,10 @@ export { default as Treatment } from './Health/Treatment';
 export { default as CureTracking } from './Health/CureTracking';
 export { default as Deworming } from './Health/Deworming';
 export { default as BodyWeight } from './Health/BodyWeight';
+export { default as BodyTemperature } from './Health/BodyTemperature';
 export { default as BodyConditionScore } from './Health/BodyConditionScore';
 export { default as HoofTrimming } from './Health/HoofTrimming';
+export { default as Shearing } from './Health/Shearing';
 // Feed & Recipe Management
 export { default as FeedRecipeList } from './Feed/FeedRecipeList';
 export { default as FeedRecipeForm } from './Feed/FeedRecipeForm';

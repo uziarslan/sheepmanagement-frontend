@@ -36,8 +36,10 @@ import {
   CureTracking,
   Deworming,
   BodyWeight,
+  BodyTemperature,
   BodyConditionScore,
   HoofTrimming,
+  Shearing,
   FeedRecipeList,
   FeedRecipeForm,
   ApplyRecipe,
@@ -290,8 +292,10 @@ function App() {
           <Route path="health/cure-tracking" element={<CureTracking />} />
           <Route path="health/deworming" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><Deworming /></ProtectedRoute>} />
           <Route path="health/body-weight" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><BodyWeight /></ProtectedRoute>} />
+          <Route path="health/body-temperature" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><BodyTemperature /></ProtectedRoute>} />
           <Route path="health/bcs" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><BodyConditionScore /></ProtectedRoute>} />
           <Route path="health/hoof-trimming" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><HoofTrimming /></ProtectedRoute>} />
+          <Route path="health/shearing" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><Shearing /></ProtectedRoute>} />
           
           {/* Feed & Recipe Management */}
           <Route path="feed/recipes" element={<ProtectedRoute allowedRoles={['Admin', 'Manager']}><FeedRecipeList /></ProtectedRoute>} />

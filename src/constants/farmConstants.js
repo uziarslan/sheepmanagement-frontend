@@ -58,3 +58,12 @@ export const hoofDiagnosis = [
   'Routine Trimming',
   'Other',
 ];
+export const shearingTypes = [
+  'Full Body',
+  'Belly Only',
+  'Crutching',
+  'Wigging',
+  'Pre-Lambing',
+  'Routine',
+  'Other',
+];

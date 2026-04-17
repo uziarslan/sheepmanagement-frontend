@@ -653,6 +653,43 @@ export const healthAPI = {
     }
   },
 
+  bulkCreateWeightRecords: async (records) => {
+    try {
+      const response = await axiosInstance.post('/health/weight-records/bulk', { records });
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  // Temperature Records
+  getTemperatureRecords: async (params = {}) => {
+    try {
+      const response = await axiosInstance.get('/health/temperature-records', { params });
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  createTemperatureRecord: async (data) => {
+    try {
+      const response = await axiosInstance.post('/health/temperature-records', data);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  bulkCreateTemperatureRecords: async (records) => {
+    try {
+      const response = await axiosInstance.post('/health/temperature-records/bulk', { records });
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
   // BCS Records
   getBcsRecords: async (params = {}) => {
     try {
@@ -691,6 +728,15 @@ export const healthAPI = {
     }
   },
 
+  bulkCreateHoofRecords: async (data) => {
+    try {
+      const response = await axiosInstance.post('/health/hoof-records/bulk', data);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
   updateHoofRecord: async (id, data) => {
     try {
       const response = await axiosInstance.put(`/health/hoof-records/${id}`, data);
@@ -703,6 +749,52 @@ export const healthAPI = {
   deleteHoofRecord: async (id) => {
     try {
       const response = await axiosInstance.delete(`/health/hoof-records/${id}`);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  // Shearing Records
+  getShearingRecords: async (params = {}) => {
+    try {
+      const response = await axiosInstance.get('/health/shearing-records', { params });
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  createShearingRecord: async (data) => {
+    try {
+      const response = await axiosInstance.post('/health/shearing-records', data);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  bulkCreateShearingRecords: async (data) => {
+    try {
+      const response = await axiosInstance.post('/health/shearing-records/bulk', data);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  updateShearingRecord: async (id, data) => {
+    try {
+      const response = await axiosInstance.put(`/health/shearing-records/${id}`, data);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  deleteShearingRecord: async (id) => {
+    try {
+      const response = await axiosInstance.delete(`/health/shearing-records/${id}`);
       return handleResponse(response);
     } catch (error) {
       return handleError(error);

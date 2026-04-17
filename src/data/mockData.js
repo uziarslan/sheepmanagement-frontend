@@ -23,6 +23,7 @@ export {
   diagnosisTypes,
   dewormingTypes,
   hoofDiagnosis,
+  shearingTypes,
 } from '../constants/farmConstants';
 
 export const mockAnimals = [
