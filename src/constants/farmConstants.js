@@ -7,7 +7,7 @@
 
 // ============ ANIMALS ============
 export const animalTypes = ['Sheep', 'Goat'];
-export const breedTypes = ['Dumba', 'Kajli', 'Beetal', 'Teddy', 'Barbari', 'Nachi', 'Rakhshani'];
+export const breedTypes = ['Dumba', 'Kajli', 'Beetal', 'Teddy', 'Barbari', 'Nachi', 'Rakhshani', 'Lohi', 'Dorper', 'Sannen', 'Boer', 'Mundri', 'Thalli', 'Cross', 'others'];
 export const animalSubcategories = ['Fattening', 'Production', 'Breeding', 'Heifer'];
 export const sexOptions = ['Male', 'Female'];
 export const countries = ['Pakistan', 'Afghanistan', 'Iran', 'Australia'];
