@@ -80,6 +80,7 @@ const LoadingSpinner = () => (
   </div>
 );
 
+
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem('token');
