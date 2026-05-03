@@ -38,6 +38,13 @@ const Capital = () => {
     retainedEarnings: '',
     investmentSubtype: ''
   });
+  const [filters, setFilters] = useState({
+    query: '',
+    type: '',
+    flow: '',
+    fromDate: '',
+    toDate: ''
+  });
 
   const investmentSubtypes = [
     ...PARTNER_OPTIONS,
@@ -67,6 +74,11 @@ const Capital = () => {
     { value: 'Veterinary', label: 'Veterinary (Deduction)' }
   ];
 
+  const transactionFlowOptions = [
+    { value: 'addition', label: 'Addition' },
+    { value: 'deduction', label: 'Deduction' }
+  ];
+
   useEffect(() => {
     fetchCapital();
   }, []);
@@ -90,6 +102,21 @@ const Capital = () => {
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
+  };
+
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      query: '',
+      type: '',
+      flow: '',
+      fromDate: '',
+      toDate: ''
+    });
   };
 
   const validate = () => {
@@ -213,6 +240,50 @@ const Capital = () => {
   if (loading) {
     return <PageLoader />;
   }
+
+  const history = capital?.history || [];
+  const filteredHistory = history
+    .slice()
+    .reverse()
+    .filter((transaction) => {
+      const query = filters.query.trim().toLowerCase();
+      const matchesQuery = !query || [
+        transaction.type,
+        transaction.description,
+        transaction.investmentSubtype
+      ]
+        .filter(Boolean)
+        .some((field) => String(field).toLowerCase().includes(query));
+
+      const matchesType = !filters.type || transaction.type === filters.type;
+
+      const matchesFlow = !filters.flow
+        || (filters.flow === 'addition' && transaction.amount > 0)
+        || (filters.flow === 'deduction' && transaction.amount < 0);
+
+      const transactionDate = transaction.date ? new Date(transaction.date) : null;
+      const fromBoundary = filters.fromDate ? new Date(`${filters.fromDate}T00:00:00`) : null;
+      const toBoundary = filters.toDate ? new Date(`${filters.toDate}T23:59:59.999`) : null;
+
+      const matchesFromDate = !fromBoundary || (transactionDate && transactionDate >= fromBoundary);
+      const matchesToDate = !toBoundary || (transactionDate && transactionDate <= toBoundary);
+
+      return matchesQuery && matchesType && matchesFlow && matchesFromDate && matchesToDate;
+    });
+
+  const totals = filteredHistory.reduce(
+    (acc, transaction) => {
+      const amount = Number(transaction.amount) || 0;
+      if (amount > 0) {
+        acc.totalAddition += amount;
+      } else if (amount < 0) {
+        acc.totalDeduction += Math.abs(amount);
+      }
+      return acc;
+    },
+    { totalAddition: 0, totalDeduction: 0 }
+  );
+  const overallTotal = totals.totalAddition - totals.totalDeduction;
 
   return (
     <div className="space-y-6">
@@ -386,10 +457,73 @@ const Capital = () => {
             <h3 className="text-lg font-semibold text-gray-800">Transaction History</h3>
             <p className="text-sm text-gray-500">All capital movements and transactions</p>
           </div>
+          <p className="text-sm text-gray-500">
+            {filteredHistory.length} of {history.length} shown
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+          <Input
+            name="query"
+            value={filters.query}
+            onChange={handleFilterChange}
+            placeholder="Search by type or description"
+          />
+          <Select
+            name="type"
+            value={filters.type}
+            onChange={handleFilterChange}
+            options={transactionTypes}
+            placeholder="All types"
+          />
+          <Select
+            name="flow"
+            value={filters.flow}
+            onChange={handleFilterChange}
+            options={transactionFlowOptions}
+            placeholder="All flows"
+          />
+          <Input
+            type="date"
+            name="fromDate"
+            value={filters.fromDate}
+            onChange={handleFilterChange}
+            placeholder="From date"
+          />
+          <div className="flex items-center gap-2">
+            <Input
+              type="date"
+              name="toDate"
+              value={filters.toDate}
+              onChange={handleFilterChange}
+              placeholder="To date"
+              className="flex-1"
+            />
+            <Button variant="outline" size="sm" onClick={clearFilters}>
+              Reset
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+          <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-green-700">Total Addition</p>
+            <p className="text-lg font-bold text-green-700 mt-1">{formatCurrency(totals.totalAddition)}</p>
+          </div>
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-red-700">Total Deduction</p>
+            <p className="text-lg font-bold text-red-700 mt-1">{formatCurrency(totals.totalDeduction)}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Overall Total</p>
+            <p className={`text-lg font-bold mt-1 ${overallTotal >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+              {overallTotal >= 0 ? '+' : ''}{formatCurrency(overallTotal)}
+            </p>
+          </div>
         </div>
 
         <div className="space-y-4">
-          {capital?.history?.length === 0 ? (
+          {history.length === 0 ? (
             <div className="text-center py-12">
               <HiOutlineCurrencyDollar className="w-12 h-12 text-gray-300 mx-auto mb-4" />
               <p className="text-gray-500">No transactions yet</p>
@@ -401,8 +535,20 @@ const Capital = () => {
                 Set Initial Capital
               </Button>
             </div>
+          ) : filteredHistory.length === 0 ? (
+            <div className="text-center py-12">
+              <HiOutlineCurrencyDollar className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500">No transactions match the selected filters</p>
+              <Button
+                variant="outline"
+                className="mt-4"
+                onClick={clearFilters}
+              >
+                Clear Filters
+              </Button>
+            </div>
           ) : (
-            capital?.history?.slice().reverse().map((transaction) => (
+            filteredHistory.map((transaction) => (
               <div
                 key={getId(transaction)}
                 className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors gap-4"
