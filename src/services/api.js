@@ -6,9 +6,17 @@ const handleResponse = (response) => {
   return response.data;
 };
 
-// Helper to handle API errors
+// Handle API errors.
+// GET requests: return a safe empty-result so pages that guard with
+// `if (response.success)` stay on their empty-state UI without a toast.
+// Mutations (POST / PUT / PATCH / DELETE): throw so the calling page can
+// catch and show an appropriate error message.
 const handleError = (error) => {
+  const method = error.config?.method?.toLowerCase();
   const message = error.response?.data?.message || error.message || 'An error occurred';
+  if (method === 'get') {
+    return { success: false, data: null, message, status: error.response?.status };
+  }
   throw new Error(message);
 };
 
