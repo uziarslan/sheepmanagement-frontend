@@ -193,6 +193,24 @@ export const animalAPI = {
     } catch (error) {
       return handleError(error);
     }
+  },
+
+  restoreFromDead: async (animalId) => {
+    try {
+      const response = await axiosInstance.put(`/animals/${animalId}/restore-from-dead`);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  restoreFromSold: async (animalId) => {
+    try {
+      const response = await axiosInstance.put(`/animals/${animalId}/restore-from-sold`);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
   }
 };
 
@@ -408,6 +426,27 @@ export const employeeAPI = {
   getSummary: async () => {
     try {
       const response = await axiosInstance.get('/employees/summary');
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  // Mark an employee as separated (Resigned / Terminated / Retired / Inactive)
+  // with an effective date, reason, and optional write-off of advance balance.
+  separate: async (id, payload) => {
+    try {
+      const response = await axiosInstance.patch(`/employees/${id}/separate`, payload);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  // Bring a previously-separated employee back to Active.
+  reactivate: async (id) => {
+    try {
+      const response = await axiosInstance.patch(`/employees/${id}/reactivate`);
       return handleResponse(response);
     } catch (error) {
       return handleError(error);
@@ -1064,9 +1103,21 @@ export const salaryAPI = {
 
 // ============ AUDIT API ============
 export const auditAPI = {
+  // List logs with filters: { page, limit, userId, action, entityType,
+  // entityId, ip, search, startDate, endDate, sort }
   getAll: async (params = {}) => {
     try {
       const response = await axiosInstance.get('/audit-logs', { params });
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  // Distinct values for filter dropdowns: { actions, entityTypes, users }
+  getFacets: async () => {
+    try {
+      const response = await axiosInstance.get('/audit-logs/facets');
       return handleResponse(response);
     } catch (error) {
       return handleError(error);
