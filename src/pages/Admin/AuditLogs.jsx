@@ -3,7 +3,6 @@ import { toast } from 'react-hot-toast';
 import {
   HiOutlineClock,
   HiOutlineUserCircle,
-  HiOutlineDocumentSearch,
   HiOutlineFilter,
   HiOutlineRefresh,
   HiOutlineX,
