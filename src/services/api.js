@@ -961,15 +961,26 @@ export const feedAPI = {
     }
   },
 
+  // Apply a recipe. Pass either `pen`/`penId` (single shed, back-compat) or
+  // `pens`/`penIds` (multiple sheds). The backend returns:
+  //   - single-pen mode → the populated FeedApplication
+  //   - multi-pen  mode → { applications, totalCost, totalAnimalCount, costPerAnimal }
   applyRecipe: async (data) => {
     try {
-      const transformedData = {
-        ...data,
-        recipe: data.recipeId || data.recipe,
-        pen: data.penId || data.pen
-      };
+      const transformedData = { ...data };
+      transformedData.recipe = data.recipeId || data.recipe;
+
+      const penArray = data.pens || data.penIds;
+      if (Array.isArray(penArray) && penArray.length > 0) {
+        transformedData.pens = penArray.map(String);
+        delete transformedData.pen;
+      } else if (data.pen || data.penId) {
+        transformedData.pen = data.penId || data.pen;
+      }
+
       delete transformedData.recipeId;
       delete transformedData.penId;
+      delete transformedData.penIds;
 
       const response = await axiosInstance.post('/feed/applications', transformedData);
       return handleResponse(response);
@@ -978,16 +989,24 @@ export const feedAPI = {
     }
   },
 
-  // P3-09: Apply recipe over a date range in a single backend call
+  // P3-09: Apply recipe over a date range in a single backend call. Also
+  // supports a `pens` array for multi-shed range applies.
   applyRecipeRange: async (data) => {
     try {
       const transformedData = {
         recipe: data.recipeId || data.recipe,
-        pen: data.penId || data.pen,
         dateStart: data.dateStart,
         dateEnd: data.dateEnd,
         notes: data.notes || null
       };
+
+      const penArray = data.pens || data.penIds;
+      if (Array.isArray(penArray) && penArray.length > 0) {
+        transformedData.pens = penArray.map(String);
+      } else if (data.pen || data.penId) {
+        transformedData.pen = data.penId || data.pen;
+      }
+
       const response = await axiosInstance.post('/feed/applications/range', transformedData);
       return handleResponse(response);
     } catch (error) {
