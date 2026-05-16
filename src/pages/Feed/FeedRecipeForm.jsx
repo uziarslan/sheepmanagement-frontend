@@ -263,7 +263,9 @@ const FeedRecipeForm = () => {
     <div className="space-y-6">
       <PageHeader
         title={isEdit ? 'Edit Feed Recipe' : 'Create Feed Recipe'}
-        subtitle={isEdit ? 'Modify the feed recipe' : 'Create a new feed recipe for a shed'}
+        subtitle={isEdit
+          ? 'Modify the feed recipe (quantities are per-animal)'
+          : 'Quantities you enter are per animal; total cost scales with the head count at apply-time'}
         breadcrumbs={[
           { label: 'Feed Management' },
           { label: 'Recipes', path: '/dashboard/feed/recipes' },
@@ -384,8 +386,8 @@ const FeedRecipeForm = () => {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ingredient</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Available Stock</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rate/Unit</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Qty / Animal</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cost / Animal</th>
                       <th className="px-4 py-3"></th>
                     </tr>
                   </thead>
@@ -464,28 +466,32 @@ const FeedRecipeForm = () => {
               </div>
               
               <div className="p-4 bg-amber-50 rounded-xl">
-                <p className="text-sm text-amber-600">Total Quantity</p>
+                <p className="text-sm text-amber-600">Quantity per Animal</p>
                 <p className="text-2xl font-bold text-amber-700">{totalQuantity.toFixed(2)} units</p>
-              </div>
-              
-              <div className="p-4 bg-emerald-50 rounded-xl">
-                <p className="text-sm text-emerald-600">Total Cost</p>
-                <p className="text-2xl font-bold text-emerald-700">{formatCurrency(totalCost)}</p>
+                <p className="text-xs text-amber-500 mt-1">Sum of ingredient quantities, one animal</p>
               </div>
 
-              {formData.penId && (
-                <div className="p-4 bg-blue-50 rounded-xl">
-                  <p className="text-sm text-blue-600">Cost per Animal</p>
-                  <p className="text-2xl font-bold text-blue-700">
-                    {formatCurrency(
-                      totalCost / (pens.find(p => String(getId(p)) === String(formData.penId))?.animalCount || 1)
-                    )}
-                  </p>
-                  <p className="text-xs text-blue-500 mt-1">
-                    Based on {pens.find(p => String(getId(p)) === String(formData.penId))?.animalCount || 0} animals
-                  </p>
-                </div>
-              )}
+              <div className="p-4 bg-emerald-50 rounded-xl">
+                <p className="text-sm text-emerald-600">Cost per Animal</p>
+                <p className="text-2xl font-bold text-emerald-700">{formatCurrency(totalCost)}</p>
+                <p className="text-xs text-emerald-500 mt-1">What this recipe costs to feed ONE animal</p>
+              </div>
+
+              {formData.penId && (() => {
+                const animalCount =
+                  pens.find(p => String(getId(p)) === String(formData.penId))?.animalCount || 0;
+                return (
+                  <div className="p-4 bg-blue-50 rounded-xl">
+                    <p className="text-sm text-blue-600">Total Cost for this Shed</p>
+                    <p className="text-2xl font-bold text-blue-700">
+                      {formatCurrency(totalCost * animalCount)}
+                    </p>
+                    <p className="text-xs text-blue-500 mt-1">
+                      {formatCurrency(totalCost)} × {animalCount} animal{animalCount === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="mt-6 pt-6 border-t space-y-3">

@@ -83,9 +83,18 @@ const ApplyVaccine = () => {
     }
   };
 
+  // Pen-wide and All-Animals scopes need EVERY animal in scope, not a
+  // paginated slice. Default backend limit is 10 — pass a large limit so the
+  // dropdown / count reflects reality. Backend caps at 5000.
+  const ANIMAL_FETCH_LIMIT = 5000;
+
   const fetchPenAnimals = async (penId) => {
     try {
-      const response = await animalAPI.getAll({ pen: penId, status: 'Active' });
+      const response = await animalAPI.getAll({
+        pen: penId,
+        status: 'Active',
+        limit: ANIMAL_FETCH_LIMIT
+      });
       if (response.success) setAnimals(response.data);
     } catch (error) {
       if (typeof console !== 'undefined' && console.error) {
@@ -96,7 +105,10 @@ const ApplyVaccine = () => {
 
   const fetchAllAnimals = async () => {
     try {
-      const response = await animalAPI.getAll({ status: 'Active' });
+      const response = await animalAPI.getAll({
+        status: 'Active',
+        limit: ANIMAL_FETCH_LIMIT
+      });
       if (response.success) setAnimals(response.data);
     } catch (error) {
       if (typeof console !== 'undefined' && console.error) {
