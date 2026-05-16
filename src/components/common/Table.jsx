@@ -48,9 +48,12 @@ export const TableRow = ({ children, onClick, className = '' }) => {
   );
 };
 
-export const TableCell = ({ children, className = '' }) => {
+export const TableCell = ({ children, className = '', colSpan }) => {
   return (
-    <td className={`px-4 py-4 whitespace-nowrap text-sm text-gray-700 ${className}`}>
+    <td
+      colSpan={colSpan}
+      className={`px-4 py-4 whitespace-nowrap text-sm text-gray-700 ${className}`}
+    >
       {children}
     </td>
   );

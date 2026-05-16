@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import {
@@ -36,7 +36,7 @@ const ApplyRecipe = () => {
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [formData, setFormData] = useState({
     recipeId: preSelectedRecipeId || '',
-    penId: '',
+    penIds: [],
     applyMode: 'single', // 'single' | 'range'
     date: new Date().toISOString().split('T')[0],
     dateStart: new Date().toISOString().split('T')[0],
@@ -53,13 +53,18 @@ const ApplyRecipe = () => {
     fetchData();
   }, []);
 
+  // When a recipe is picked, default the selected pen to the recipe's default
+  // shed (if any) — but only if the user hasn't picked anything yet. They can
+  // still uncheck and pick multiple.
   useEffect(() => {
     if (formData.recipeId) {
       const recipe = recipes.find(r => String(getId(r)) === String(formData.recipeId));
       setSelectedRecipe(recipe || null);
-      if (recipe && !formData.penId) {
-        const recipePen = recipe.pen?._id || recipe.pen || recipe.penId;
-        setFormData(prev => ({ ...prev, penId: recipePen?.toString() || '' }));
+      if (recipe && formData.penIds.length === 0) {
+        const defaultPen = recipe.pen?._id || recipe.pen || recipe.penId;
+        if (defaultPen) {
+          setFormData(prev => ({ ...prev, penIds: [String(defaultPen)] }));
+        }
       }
     } else {
       setSelectedRecipe(null);
@@ -74,7 +79,7 @@ const ApplyRecipe = () => {
         penAPI.getAll({ limit: 100 }),
         feedAPI.getApplications()
       ]);
-      
+
       if (recipesRes.success) setRecipes(recipesRes.data);
       if (pensRes.success) setPens(pensRes.data);
       if (applicationsRes.success) setApplications(applicationsRes.data);
@@ -91,14 +96,54 @@ const ApplyRecipe = () => {
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
   };
 
+  const togglePen = (penId) => {
+    const key = String(penId);
+    setFormData(prev => {
+      const has = prev.penIds.includes(key);
+      return {
+        ...prev,
+        penIds: has ? prev.penIds.filter(p => p !== key) : [...prev.penIds, key]
+      };
+    });
+    if (errors.penIds) setErrors(prev => ({ ...prev, penIds: '' }));
+  };
+
+  const selectAllPens = () => {
+    setFormData(prev => ({
+      ...prev,
+      penIds: pens.filter(p => (p.animalCount ?? 0) > 0).map(p => String(getId(p)))
+    }));
+  };
+
+  const clearPenSelection = () => {
+    setFormData(prev => ({ ...prev, penIds: [] }));
+  };
+
+  // Compute total animals across the picked sheds and a list of selected-pen
+  // objects (for the preview). Memoised so we don't recalc on every render.
+  const { selectedPens, totalAnimals } = useMemo(() => {
+    const picked = pens.filter(p => formData.penIds.includes(String(getId(p))));
+    const total = picked.reduce((sum, p) => sum + (p.animalCount || 0), 0);
+    return { selectedPens: picked, totalAnimals: total };
+  }, [pens, formData.penIds]);
+
+  const dayCount = useMemo(() => {
+    if (formData.applyMode !== 'range') return 1;
+    if (!formData.dateStart || !formData.dateEnd) return 1;
+    const start = new Date(formData.dateStart);
+    const end = new Date(formData.dateEnd);
+    if (start > end) return 0;
+    return Math.ceil((end - start) / (24 * 60 * 60 * 1000)) + 1;
+  }, [formData.applyMode, formData.dateStart, formData.dateEnd]);
+
   const validate = () => {
     const newErrors = {};
 
     if (!formData.recipeId) {
       newErrors.recipeId = 'Please select a recipe';
     }
-    if (!formData.penId) {
-      newErrors.penId = 'Please select a shed/pen';
+    if (formData.penIds.length === 0) {
+      newErrors.penIds = 'Select at least one shed/pen';
     }
     if (formData.applyMode === 'single') {
       if (!formData.date) newErrors.date = 'Date is required';
@@ -108,33 +153,26 @@ const ApplyRecipe = () => {
       if (formData.dateStart && formData.dateEnd && formData.dateStart > formData.dateEnd) {
         newErrors.dateEnd = 'End date must be on or after start date';
       }
-      if (formData.dateStart && formData.dateEnd) {
-        const start = new Date(formData.dateStart);
-        const end = new Date(formData.dateEnd);
-        const days = Math.ceil((end - start) / (24 * 60 * 60 * 1000)) + 1;
-        if (days > 90) {
-          newErrors.dateEnd = 'Date range cannot exceed 90 days';
-        }
+      if (dayCount > 90) {
+        newErrors.dateEnd = 'Date range cannot exceed 90 days';
       }
     }
 
-    // Check stock availability (for range, need stock × number of days)
-    if (selectedRecipe) {
-      let multiplier = 1;
-      if (formData.applyMode === 'range' && formData.dateStart && formData.dateEnd) {
-        const start = new Date(formData.dateStart);
-        const end = new Date(formData.dateEnd);
-        multiplier = Math.ceil((end - start) / (24 * 60 * 60 * 1000)) + 1;
-      }
+    // Stock availability: need ing.quantity × totalAnimals × dayCount across
+    // ALL selected pens.
+    if (selectedRecipe && totalAnimals > 0) {
       const insufficientStock = selectedRecipe.ingredients.filter(
-        ing => (ing.quantity * multiplier) > (ing.currentStock || 0)
+        ing => (ing.quantity * totalAnimals * dayCount) > (ing.currentStock || 0)
       );
       if (insufficientStock.length > 0) {
-        const msg = multiplier > 1
-          ? `Insufficient stock for ${multiplier} days: ${insufficientStock.map(i => i.name).join(', ')}`
-          : `Insufficient stock for: ${insufficientStock.map(i => i.name).join(', ')}`;
-        newErrors.stock = msg;
+        newErrors.stock =
+          `Not enough stock for ${totalAnimals} animal(s)` +
+          (dayCount > 1 ? ` × ${dayCount} days` : '') +
+          `: ${insufficientStock.map(i => i.name).join(', ')}`;
       }
+    }
+    if (selectedRecipe && totalAnimals === 0 && formData.penIds.length > 0) {
+      newErrors.penIds = 'Selected shed(s) have no active animals';
     }
 
     setErrors(newErrors);
@@ -146,8 +184,7 @@ const ApplyRecipe = () => {
     if (!validate()) return;
 
     const recipeIdKey = String(formData.recipeId).trim();
-    const penIdKey = String(formData.penId).trim();
-    const pen = pens.find(p => String(getId(p)) === String(penIdKey));
+    const penIdsKey = formData.penIds.map(String);
 
     setApplying(true);
     try {
@@ -155,56 +192,64 @@ const ApplyRecipe = () => {
       let failedDates = [];
 
       if (formData.applyMode === 'range') {
-        // P3-09: Use single backend call for date ranges instead of N sequential calls
         const response = await feedAPI.applyRecipeRange({
           recipe: recipeIdKey,
-          pen: penIdKey,
+          pens: penIdsKey,
           dateStart: formData.dateStart,
           dateEnd: formData.dateEnd,
           notes: formData.notes || null
         });
         if (response.success && response.data) {
-          successApps = response.data.succeeded || [];
+          // Each day returns either a single application (legacy) or a
+          // { applications, ... } envelope (multi-pen). Flatten to a flat list.
+          successApps = (response.data.succeeded || []).flatMap(d => {
+            if (Array.isArray(d?.applications)) return d.applications;
+            return d ? [d] : [];
+          });
           failedDates = response.data.failed || [];
         } else {
           throw new Error(response.message || 'Failed to apply recipe range');
         }
       } else {
-        // Single date — existing single-application path
-        const applicationData = {
+        const response = await feedAPI.applyRecipe({
           recipe: recipeIdKey,
-          pen: penIdKey,
+          pens: penIdsKey,
           date: formData.date,
           notes: formData.notes || null
-        };
-        const response = await feedAPI.applyRecipe(applicationData);
+        });
         if (response.success) {
-          successApps = [response.data];
+          // Multi-pen response shape: { applications: [...] }
+          if (Array.isArray(response.data?.applications)) {
+            successApps = response.data.applications;
+          } else if (response.data) {
+            successApps = [response.data];
+          }
         } else {
           throw new Error(response.message || 'Failed to apply recipe');
         }
       }
 
-      const totalDays = formData.applyMode === 'range'
-        ? (Math.ceil((new Date(formData.dateEnd) - new Date(formData.dateStart)) / (24 * 60 * 60 * 1000)) + 1)
-        : 1;
-
       if (successApps.length > 0) {
-        if (totalDays > 1) {
-          await fetchData(); // Refresh to get full list with proper ordering
+        if (dayCount > 1 || formData.penIds.length > 1) {
+          await fetchData(); // refresh to get the full list ordered correctly
         } else {
           setApplications(prev => [...successApps, ...prev]);
         }
-        const penName = pen?.name || 'shed';
-        if (successApps.length === totalDays) {
+
+        const penLabel = penIdsKey.length === 1
+          ? (selectedPens[0]?.name || 'shed')
+          : `${penIdsKey.length} sheds`;
+
+        const expectedCount = dayCount * penIdsKey.length;
+        if (successApps.length === expectedCount) {
           toast.success(
-            totalDays === 1
-              ? `Recipe applied to ${penName} successfully`
-              : `Recipe applied to ${penName} for ${successApps.length} days successfully`
+            dayCount === 1
+              ? `Recipe applied to ${penLabel} successfully`
+              : `Recipe applied to ${penLabel} for ${dayCount} days successfully`
           );
         } else {
           toast.success(
-            `Recipe applied for ${successApps.length} of ${totalDays} days. ${failedDates.length} failed.`
+            `Applied ${successApps.length} of ${expectedCount} records. ${failedDates.length} day(s) failed.`
           );
           failedDates.forEach(({ date, error }) => toast.error(`${date}: ${error}`));
         }
@@ -214,7 +259,7 @@ const ApplyRecipe = () => {
         setFormData(prev => ({
           ...prev,
           recipeId: '',
-          penId: '',
+          penIds: [],
           date: today,
           dateStart: today,
           dateEnd: today,
@@ -231,17 +276,19 @@ const ApplyRecipe = () => {
     }
   };
 
-  const selectedPen = pens.find(p => String(getId(p)) === String(formData.penId));
-
   if (loading) {
     return <PageLoader />;
   }
 
+  // Per-animal cost from the recipe (semantic: recipe.totalCost IS per-animal).
+  const costPerAnimal = Number(selectedRecipe?.totalCost) || 0;
+  const totalCostForApply = costPerAnimal * totalAnimals * dayCount;
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Apply Recipe to Shed"
-        subtitle="Allocate feed cost to animals in a shed"
+        title="Apply Recipe to Shed(s)"
+        subtitle="Charge feed cost to animals in one or more sheds"
         breadcrumbs={[
           { label: 'Feed Management' },
           { label: 'Apply Recipe' }
@@ -261,35 +308,101 @@ const ApplyRecipe = () => {
         {/* Application Form */}
         <Card className="lg:col-span-2">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Apply Feed Recipe</h3>
-          
+
           <form onSubmit={handleApply} className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Select
-                label="Select Recipe"
-                name="recipeId"
-                value={formData.recipeId}
-                onChange={handleChange}
-                options={recipes.map(r => ({
-                  value: getId(r),
-                  label: `${r.name} - ${formatCurrency(r.totalCost || 0)}`
-                }))}
-                placeholder="Choose a recipe"
-                error={errors.recipeId}
-                required
-              />
-              <Select
-                label="Target Shed/Pen"
-                name="penId"
-                value={formData.penId}
-                onChange={handleChange}
-                options={pens.map(p => ({
-                  value: getId(p),
-                  label: `${p.name} (${p.animalCount} animals)`
-                }))}
-                placeholder="Choose a shed"
-                error={errors.penId}
-                required
-              />
+            <Select
+              label="Select Recipe"
+              name="recipeId"
+              value={formData.recipeId}
+              onChange={handleChange}
+              options={recipes.map(r => ({
+                value: getId(r),
+                label: `${r.name} - ${formatCurrency(r.totalCost || 0)}/animal`
+              }))}
+              placeholder="Choose a recipe"
+              error={errors.recipeId}
+              required
+            />
+
+            {/* Multi-pen picker */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Target Sheds / Pens{' '}
+                  <span className="text-xs text-gray-500 font-normal">
+                    (select one or more)
+                  </span>
+                </label>
+                <div className="flex items-center gap-3 text-xs">
+                  <button
+                    type="button"
+                    onClick={selectAllPens}
+                    className="text-emerald-600 hover:text-emerald-700 font-medium"
+                  >
+                    Select all
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    type="button"
+                    onClick={clearPenSelection}
+                    className="text-gray-500 hover:text-gray-700 font-medium"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <div className="border border-gray-200 rounded-xl divide-y divide-gray-100 max-h-60 overflow-y-auto">
+                {pens.length === 0 && (
+                  <p className="px-4 py-6 text-sm text-gray-500 text-center">
+                    No sheds available
+                  </p>
+                )}
+                {pens.map((p) => {
+                  const id = String(getId(p));
+                  const checked = formData.penIds.includes(id);
+                  const animalCount = p.animalCount ?? 0;
+                  const empty = animalCount === 0;
+                  return (
+                    <label
+                      key={id}
+                      className={`flex items-center justify-between gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                        checked ? 'bg-emerald-50' : 'hover:bg-gray-50'
+                      } ${empty ? 'opacity-60' : ''}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => togglePen(id)}
+                          disabled={empty}
+                          className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
+                        />
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">{p.name}</p>
+                          {empty && (
+                            <p className="text-xs text-gray-400">No active animals</p>
+                          )}
+                        </div>
+                      </div>
+                      <Badge variant={empty ? 'default' : 'info'} className="text-xs">
+                        {animalCount} animal{animalCount === 1 ? '' : 's'}
+                      </Badge>
+                    </label>
+                  );
+                })}
+              </div>
+
+              {formData.penIds.length > 0 && (
+                <p className="mt-2 text-sm text-gray-600">
+                  Selected: <strong>{formData.penIds.length} shed{formData.penIds.length === 1 ? '' : 's'}</strong>
+                  {' · '}
+                  <strong>{totalAnimals} animal{totalAnimals === 1 ? '' : 's'} total</strong>
+                </p>
+              )}
+              {errors.penIds && (
+                <p className="mt-1 text-sm text-red-600">{errors.penIds}</p>
+              )}
             </div>
 
             <div>
@@ -350,13 +463,9 @@ const ApplyRecipe = () => {
                   error={errors.dateEnd}
                   required
                 />
-                {formData.dateStart && formData.dateEnd && formData.dateStart <= formData.dateEnd && (
+                {dayCount > 0 && (
                   <p className="sm:col-span-2 text-sm text-gray-500">
-                    Will apply recipe for{' '}
-                    <strong>
-                      {Math.ceil((new Date(formData.dateEnd) - new Date(formData.dateStart)) / (24 * 60 * 60 * 1000)) + 1}
-                    </strong>{' '}
-                    days
+                    Will apply recipe for <strong>{dayCount}</strong> day{dayCount === 1 ? '' : 's'}
                   </p>
                 )}
               </div>
@@ -377,103 +486,114 @@ const ApplyRecipe = () => {
               </div>
             )}
 
-            {/* Recipe Preview */}
-            {selectedRecipe && (() => {
-              const dayCount = formData.applyMode === 'range' && formData.dateStart && formData.dateEnd && formData.dateStart <= formData.dateEnd
-                ? Math.ceil((new Date(formData.dateEnd) - new Date(formData.dateStart)) / (24 * 60 * 60 * 1000)) + 1
-                : 1;
-              const multiplier = dayCount;
-              return (
-                <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-                  <h4 className="font-semibold text-amber-800 mb-3">Recipe: {selectedRecipe.name}</h4>
-                  <div className="space-y-2">
-                    {selectedRecipe.ingredients.map((ing, i) => {
-                      const needQty = ing.quantity * multiplier;
-                      const hasStock = (ing.currentStock || 0) >= needQty;
-                      return (
-                        <div key={i} className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-2">
-                            <HiOutlineBeaker className="w-4 h-4 text-amber-600" />
-                            <span>{ing.name}</span>
-                          </div>
-                          <div className="flex items-center gap-4">
-                            <span className="text-gray-600">
-                              {multiplier > 1 ? `${ing.quantity} × ${multiplier} = ${needQty}` : ing.quantity} {ing.unit}
-                            </span>
-                            <span className={`font-medium ${!hasStock ? 'text-red-600' : 'text-emerald-600'}`}>
-                              {formatCurrency(ing.total * multiplier)}
-                            </span>
-                            {!hasStock && (
-                              <Badge variant="danger" className="text-xs">Low Stock</Badge>
-                            )}
-                          </div>
+            {/* Recipe Preview — stock consumption for the selected animals */}
+            {selectedRecipe && totalAnimals > 0 && (
+              <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                <h4 className="font-semibold text-amber-800 mb-1">
+                  Recipe: {selectedRecipe.name}
+                </h4>
+                <p className="text-xs text-amber-700 mb-3">
+                  Quantities below are the recipe per-animal value × {totalAnimals} animal{totalAnimals === 1 ? '' : 's'}
+                  {dayCount > 1 ? ` × ${dayCount} days` : ''}
+                </p>
+                <div className="space-y-2">
+                  {selectedRecipe.ingredients.map((ing, i) => {
+                    const needQty = ing.quantity * totalAnimals * dayCount;
+                    const lineCost = ing.total * totalAnimals * dayCount;
+                    const hasStock = (ing.currentStock || 0) >= needQty;
+                    return (
+                      <div key={i} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <HiOutlineBeaker className="w-4 h-4 text-amber-600" />
+                          <span>{ing.name}</span>
                         </div>
-                      );
-                    })}
-                    <div className="pt-2 mt-2 border-t border-amber-200 flex justify-between">
-                      <span className="font-semibold text-amber-800">
-                        Total{multiplier > 1 ? ` (${multiplier} days)` : ''}:
-                      </span>
-                      <span className="font-bold text-emerald-600">
-                        {formatCurrency(selectedRecipe.totalCost * multiplier)}
-                      </span>
-                    </div>
+                        <div className="flex items-center gap-4">
+                          <span className="text-gray-600">
+                            {ing.quantity} × {totalAnimals}
+                            {dayCount > 1 ? ` × ${dayCount}` : ''} = {needQty} {ing.unit}
+                          </span>
+                          <span className={`font-medium ${!hasStock ? 'text-red-600' : 'text-emerald-600'}`}>
+                            {formatCurrency(lineCost)}
+                          </span>
+                          {!hasStock && (
+                            <Badge variant="danger" className="text-xs">Low Stock</Badge>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="pt-2 mt-2 border-t border-amber-200 flex justify-between">
+                    <span className="font-semibold text-amber-800">Total cost:</span>
+                    <span className="font-bold text-emerald-600">
+                      {formatCurrency(totalCostForApply)}
+                    </span>
                   </div>
                 </div>
-              );
-            })()}
+              </div>
+            )}
 
             {/* Cost Allocation Preview */}
-            {selectedRecipe && selectedPen && (() => {
-              const dayCount = formData.applyMode === 'range' && formData.dateStart && formData.dateEnd && formData.dateStart <= formData.dateEnd
-                ? Math.ceil((new Date(formData.dateEnd) - new Date(formData.dateStart)) / (24 * 60 * 60 * 1000)) + 1
-                : 1;
-              const totalCost = selectedRecipe.totalCost * dayCount;
-              const costPerAnimalPerDay = selectedPen.animalCount > 0 ? selectedRecipe.totalCost / selectedPen.animalCount : 0;
-              const costPerAnimalTotal = selectedPen.animalCount > 0 ? totalCost / selectedPen.animalCount : 0;
-              return (
-                <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-                  <h4 className="font-semibold text-emerald-800 mb-3">Cost Allocation Preview</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm text-emerald-600">Animals in Shed</p>
-                      <p className="text-xl font-bold text-emerald-800">{selectedPen.animalCount}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-emerald-600">Cost per Animal (per day)</p>
-                      <p className="text-xl font-bold text-emerald-800">{formatCurrency(costPerAnimalPerDay)}</p>
-                    </div>
-                    {dayCount > 1 && (
-                      <>
-                        <div>
-                          <p className="text-sm text-emerald-600">Days</p>
-                          <p className="text-xl font-bold text-emerald-800">{dayCount}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-emerald-600">Total Cost ({dayCount} days)</p>
-                          <p className="text-xl font-bold text-emerald-800">{formatCurrency(totalCost)}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-emerald-600">Cost per Animal (total period)</p>
-                          <p className="text-xl font-bold text-emerald-800">{formatCurrency(costPerAnimalTotal)}</p>
-                        </div>
-                      </>
-                    )}
+            {selectedRecipe && totalAnimals > 0 && (
+              <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
+                <h4 className="font-semibold text-emerald-800 mb-3">Cost Allocation Preview</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-emerald-600">Sheds selected</p>
+                    <p className="text-xl font-bold text-emerald-800">{formData.penIds.length}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-emerald-600">Total animals</p>
+                    <p className="text-xl font-bold text-emerald-800">{totalAnimals}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-emerald-600">Cost per animal{dayCount > 1 ? ' (per day)' : ''}</p>
+                    <p className="text-xl font-bold text-emerald-800">{formatCurrency(costPerAnimal)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-emerald-600">
+                      Total cost{dayCount > 1 ? ` (${dayCount} days)` : ''}
+                    </p>
+                    <p className="text-xl font-bold text-emerald-800">
+                      {formatCurrency(totalCostForApply)}
+                    </p>
                   </div>
                 </div>
-              );
-            })()}
+
+                {/* Per-shed breakdown when more than one shed picked */}
+                {selectedPens.length > 1 && (
+                  <div className="mt-4 pt-4 border-t border-emerald-200">
+                    <p className="text-xs text-emerald-700 font-medium mb-2">Per-shed breakdown</p>
+                    <div className="space-y-1">
+                      {selectedPens.map(p => {
+                        const count = p.animalCount || 0;
+                        const cost = costPerAnimal * count * dayCount;
+                        return (
+                          <div key={getId(p)} className="flex justify-between text-sm">
+                            <span className="text-gray-700">
+                              {p.name} <span className="text-gray-500">({count} animals)</span>
+                            </span>
+                            <span className="font-medium text-emerald-700">
+                              {formatCurrency(cost)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <Button
               type="submit"
               fullWidth
               icon={HiOutlinePlay}
               loading={applying}
-              disabled={!selectedRecipe || !selectedPen}
+              disabled={!selectedRecipe || totalAnimals === 0}
             >
-              {formData.applyMode === 'range' && formData.dateStart && formData.dateEnd && formData.dateStart <= formData.dateEnd
-                ? `Apply Recipe for ${Math.ceil((new Date(formData.dateEnd) - new Date(formData.dateStart)) / (24 * 60 * 60 * 1000)) + 1} Days`
-                : 'Apply Recipe'}
+              {dayCount > 1
+                ? `Apply Recipe to ${formData.penIds.length || 0} Shed${formData.penIds.length === 1 ? '' : 's'} for ${dayCount} Days`
+                : `Apply Recipe to ${formData.penIds.length || 0} Shed${formData.penIds.length === 1 ? '' : 's'}`}
             </Button>
           </form>
         </Card>
@@ -481,7 +601,7 @@ const ApplyRecipe = () => {
         {/* Recent Applications */}
         <Card>
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Applications</h3>
-          
+
           {applications.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               No applications yet
@@ -490,7 +610,7 @@ const ApplyRecipe = () => {
             <div className="space-y-3 max-h-[500px] overflow-y-auto">
               {applications.slice(0, 10).map((app) => (
                 <div
-                  key={app.id}
+                  key={app.id || app._id}
                   className="p-3 bg-gray-50 rounded-xl border border-gray-200"
                 >
                   <div className="flex items-center justify-between mb-2">
@@ -529,7 +649,7 @@ const ApplyRecipe = () => {
       {/* Applications History Table */}
       <Card>
         <h3 className="text-lg font-semibold text-gray-800 mb-4">Application History</h3>
-        
+
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">

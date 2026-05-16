@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { HiOutlineArrowLeft } from 'react-icons/hi';
+import { HiOutlineArrowLeft, HiOutlineRefresh } from 'react-icons/hi';
 import { animalAPI, penAPI } from '../../services/api';
 import {
   PageHeader,
@@ -30,6 +30,8 @@ const AnimalForm = () => {
   const [loading, setLoading] = useState(isEdit);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  const [restoring, setRestoring] = useState(false);
+  const [confirmRestore, setConfirmRestore] = useState(null); // 'dead' | 'sold' | null
   
   const [formData, setFormData] = useState({
     tagId: '',
@@ -102,6 +104,25 @@ const AnimalForm = () => {
       navigate('/dashboard/animals');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!confirmRestore) return;
+    setRestoring(true);
+    try {
+      if (confirmRestore === 'dead') {
+        await animalAPI.restoreFromDead(id);
+      } else {
+        await animalAPI.restoreFromSold(id);
+      }
+      toast.success('Animal restored to Active successfully');
+      setConfirmRestore(null);
+      await fetchAnimal();
+    } catch (error) {
+      toast.error(error.message || 'Failed to restore animal');
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -236,6 +257,81 @@ const AnimalForm = () => {
           </Button>
         }
       />
+
+      {/* Status banner for Dead / Sold animals */}
+      {isEdit && formData.status === 'Dead' && (
+        <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-5 py-4">
+          <div>
+            <p className="text-sm font-semibold text-red-700">This animal is marked as Dead</p>
+            <p className="text-xs text-red-500 mt-0.5">Restoring will reverse the capital loss and set the animal back to Active.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setConfirmRestore('dead')}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors"
+          >
+            <HiOutlineRefresh className="w-4 h-4" />
+            Restore to Active
+          </button>
+        </div>
+      )}
+
+      {isEdit && formData.status === 'Sold' && (
+        <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-5 py-4">
+          <div>
+            <p className="text-sm font-semibold text-blue-700">This animal is marked as Sold</p>
+            <p className="text-xs text-blue-500 mt-0.5">Restoring will reverse the sale profit/loss in capital and set the animal back to Active.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setConfirmRestore('sold')}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+          >
+            <HiOutlineRefresh className="w-4 h-4" />
+            Restore to Active
+          </button>
+        </div>
+      )}
+
+      {/* Confirm restore dialog */}
+      {confirmRestore && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">
+              Restore Animal?
+            </h3>
+            <p className="text-sm text-gray-600 mb-6">
+              {confirmRestore === 'dead'
+                ? 'This will reverse the death loss recorded in capital and set the animal back to Active. This cannot be undone without re-declaring the animal dead.'
+                : 'This will reverse the sale profit/loss recorded in capital and set the animal back to Active. This cannot be undone without re-marking the animal as sold.'}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmRestore(null)}
+                disabled={restoring}
+                className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRestore}
+                disabled={restoring}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50"
+              >
+                {restoring && (
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                )}
+                {restoring ? 'Restoring...' : 'Yes, Restore'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
