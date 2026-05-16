@@ -8,7 +8,9 @@ import {
   HiOutlineTrash,
   HiOutlinePhone,
   HiOutlineMail,
-  HiOutlineKey
+  HiOutlineKey,
+  HiOutlineLogout,
+  HiOutlineRefresh
 } from 'react-icons/hi';
 import { employeeAPI } from '../../services/api';
 import { formatCurrency, filterBySearch } from '../../utils/helpers';
@@ -28,8 +30,12 @@ import {
   Modal,
   ConfirmDialog,
   Input,
+  Select,
+  Textarea,
   PageLoader
 } from '../../components/common';
+
+const SEPARATION_STATUSES = ['Resigned', 'Terminated', 'Retired', 'Inactive'];
 
 const EmployeeList = () => {
   const navigate = useNavigate();
@@ -45,6 +51,17 @@ const EmployeeList = () => {
     confirmPassword: ''
   });
   const [resetErrors, setResetErrors] = useState({});
+  const [separateModal, setSeparateModal] = useState({ open: false, employee: null });
+  const [separateSubmitting, setSeparateSubmitting] = useState(false);
+  const [separateForm, setSeparateForm] = useState({
+    status: 'Resigned',
+    dateOfLeaving: new Date().toISOString().split('T')[0],
+    leavingReason: '',
+    writeOffAdvance: false
+  });
+  const [separateErrors, setSeparateErrors] = useState({});
+  const [reactivateDialog, setReactivateDialog] = useState({ open: false, employee: null });
+  const [reactivateSubmitting, setReactivateSubmitting] = useState(false);
 
   // Helper to get id from item (supports both _id and id)
   const getId = (item) => item?._id ?? item?.id;
@@ -99,6 +116,96 @@ const EmployeeList = () => {
     setResetForm((prev) => ({ ...prev, [name]: value }));
     if (resetErrors[name]) {
       setResetErrors((prev) => ({ ...prev, [name]: '' }));
+    }
+  };
+
+  // ── Separation flow ──────────────────────────────────────────────────────
+  const openSeparateModal = (employee) => {
+    setSeparateModal({ open: true, employee });
+    setSeparateForm({
+      status: 'Resigned',
+      dateOfLeaving: new Date().toISOString().split('T')[0],
+      leavingReason: '',
+      writeOffAdvance: false
+    });
+    setSeparateErrors({});
+  };
+
+  const closeSeparateModal = () => {
+    setSeparateModal({ open: false, employee: null });
+    setSeparateErrors({});
+  };
+
+  const handleSeparateChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setSeparateForm((prev) => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+    if (separateErrors[name]) {
+      setSeparateErrors((prev) => ({ ...prev, [name]: '' }));
+    }
+  };
+
+  const handleSeparateSubmit = async (e) => {
+    e.preventDefault();
+    if (!separateModal.employee) return;
+
+    const errors = {};
+    if (!SEPARATION_STATUSES.includes(separateForm.status)) {
+      errors.status = 'Select a separation type';
+    }
+    if (!separateForm.dateOfLeaving) {
+      errors.dateOfLeaving = 'Date of leaving is required';
+    } else if (new Date(separateForm.dateOfLeaving) > new Date()) {
+      errors.dateOfLeaving = 'Date cannot be in the future';
+    }
+    setSeparateErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    const employeeId = getId(separateModal.employee);
+    setSeparateSubmitting(true);
+    try {
+      const response = await employeeAPI.separate(employeeId, separateForm);
+      if (response.success && response.data) {
+        const updated = response.data;
+        setEmployees((prev) =>
+          prev.map((e) => (getId(e) === employeeId ? { ...e, ...updated } : e))
+        );
+        toast.success(`Marked as ${updated.status}`);
+        closeSeparateModal();
+      } else {
+        toast.success('Employee separated');
+        await fetchEmployees();
+        closeSeparateModal();
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to separate employee');
+    } finally {
+      setSeparateSubmitting(false);
+    }
+  };
+
+  const handleReactivate = async () => {
+    if (!reactivateDialog.employee) return;
+    const employeeId = getId(reactivateDialog.employee);
+    setReactivateSubmitting(true);
+    try {
+      const response = await employeeAPI.reactivate(employeeId);
+      if (response.success && response.data) {
+        const updated = response.data;
+        setEmployees((prev) =>
+          prev.map((e) => (getId(e) === employeeId ? { ...e, ...updated } : e))
+        );
+      } else {
+        await fetchEmployees();
+      }
+      toast.success('Employee reactivated');
+      setReactivateDialog({ open: false, employee: null });
+    } catch (error) {
+      toast.error(error.message || 'Failed to reactivate employee');
+    } finally {
+      setReactivateSubmitting(false);
     }
   };
 
@@ -266,9 +373,24 @@ const EmployeeList = () => {
                     </span>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={employee.status === 'Active' ? 'success' : 'default'}>
-                      {employee.status}
-                    </Badge>
+                    <div className="flex flex-col gap-1">
+                      <Badge
+                        variant={
+                          employee.status === 'Active'
+                            ? 'success'
+                            : employee.status === 'Terminated'
+                              ? 'danger'
+                              : 'default'
+                        }
+                      >
+                        {employee.status}
+                      </Badge>
+                      {employee.status !== 'Active' && employee.dateOfLeaving && (
+                        <span className="text-xs text-gray-500">
+                          since {new Date(employee.dateOfLeaving).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end space-x-2">
@@ -293,6 +415,23 @@ const EmployeeList = () => {
                       >
                         <HiOutlineKey className="w-5 h-5" />
                       </button>
+                      {employee.status === 'Active' ? (
+                        <button
+                          onClick={() => openSeparateModal(employee)}
+                          className="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                          title="Resign / Terminate"
+                        >
+                          <HiOutlineLogout className="w-5 h-5" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setReactivateDialog({ open: true, employee })}
+                          className="p-2 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                          title="Reactivate"
+                        >
+                          <HiOutlineRefresh className="w-5 h-5" />
+                        </button>
+                      )}
                       <button
                         onClick={() => setDeleteModal({ open: true, employee })}
                         className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -324,6 +463,111 @@ const EmployeeList = () => {
         message={`Are you sure you want to delete "${deleteModal.employee?.name}"? This action cannot be undone.`}
         confirmText="Delete"
         loading={deleting}
+      />
+
+      {/* Separation Modal */}
+      <Modal
+        isOpen={separateModal.open}
+        onClose={closeSeparateModal}
+        title={
+          separateModal.employee
+            ? `Separate Employee - ${separateModal.employee.name}`
+            : 'Separate Employee'
+        }
+        size="md"
+      >
+        {separateModal.employee && (
+          <form onSubmit={handleSeparateSubmit} className="space-y-4">
+            <Select
+              label="Separation Type *"
+              name="status"
+              value={separateForm.status}
+              onChange={handleSeparateChange}
+              error={separateErrors.status}
+              required
+            >
+              <option value="Resigned">Resigned (voluntary)</option>
+              <option value="Terminated">Terminated (dismissed)</option>
+              <option value="Retired">Retired</option>
+              <option value="Inactive">Inactive (on leave / paused)</option>
+            </Select>
+
+            <Input
+              label="Date of Leaving *"
+              type="date"
+              name="dateOfLeaving"
+              value={separateForm.dateOfLeaving}
+              onChange={handleSeparateChange}
+              error={separateErrors.dateOfLeaving}
+              max={new Date().toISOString().split('T')[0]}
+              required
+            />
+
+            <Textarea
+              label="Reason"
+              name="leavingReason"
+              value={separateForm.leavingReason}
+              onChange={handleSeparateChange}
+              placeholder="e.g. Found a better opportunity / Policy violation / Reached retirement age..."
+              rows={3}
+            />
+
+            {separateModal.employee.advanceBalance > 0 && (
+              <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
+                <p className="text-sm text-orange-800 font-medium">
+                  Outstanding advance: {formatCurrency(separateModal.employee.advanceBalance)}
+                </p>
+                <label className="flex items-start gap-2 mt-2 text-sm text-orange-900 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    name="writeOffAdvance"
+                    checked={separateForm.writeOffAdvance}
+                    onChange={handleSeparateChange}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    Write off the outstanding advance as a loss. The amount will be
+                    posted to capital.loss and the employee balance set to zero.
+                  </span>
+                </label>
+              </div>
+            )}
+
+            <p className="text-xs text-gray-500">
+              The employee's linked login account (if any) will be deactivated.
+              You can reactivate later from this page.
+            </p>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={closeSeparateModal}
+                disabled={separateSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" variant="danger" loading={separateSubmitting}>
+                Confirm Separation
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* Reactivate confirmation */}
+      <ConfirmDialog
+        isOpen={reactivateDialog.open}
+        onClose={() => setReactivateDialog({ open: false, employee: null })}
+        onConfirm={handleReactivate}
+        title="Reactivate Employee"
+        message={
+          reactivateDialog.employee
+            ? `Bring ${reactivateDialog.employee.name} back to Active? Status, dateOfLeaving and reason will be cleared. The linked login account is not auto-reactivated — do that from User Management.`
+            : ''
+        }
+        confirmText="Reactivate"
+        loading={reactivateSubmitting}
       />
 
       {/* Reset Password Modal */}

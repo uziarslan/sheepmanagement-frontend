@@ -110,8 +110,9 @@ const FeedRecipeList = () => {
         </Card>
         <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600">
           <div className="text-white">
-            <p className="text-emerald-100 text-sm">Total Recipe Value</p>
+            <p className="text-emerald-100 text-sm">Sum of Per-Animal Costs</p>
             <p className="text-2xl font-bold mt-1">{formatCurrency(totalCost)}</p>
+            <p className="text-emerald-100 text-xs mt-0.5">Across all recipes</p>
           </div>
         </Card>
         <Card className="bg-gradient-to-br from-blue-500 to-blue-600">
@@ -138,10 +139,10 @@ const FeedRecipeList = () => {
         <Table>
           <TableHead>
             <TableHeader>Recipe Name</TableHeader>
-            <TableHeader>Shed/Pen</TableHeader>
+            <TableHeader>Default Shed</TableHeader>
             <TableHeader>Ingredients</TableHeader>
-            <TableHeader>Total Quantity</TableHeader>
-            <TableHeader>Total Cost</TableHeader>
+            <TableHeader>Qty / Animal</TableHeader>
+            <TableHeader>Cost / Animal</TableHeader>
             <TableHeader>Applied</TableHeader>
             <TableHeader className="text-right">Actions</TableHeader>
           </TableHead>
@@ -243,11 +244,11 @@ const FeedRecipeList = () => {
                 <p className="font-medium">{viewModal.data.name}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Shed/Pen</p>
+                <p className="text-sm text-gray-500">Default Shed</p>
                 <Badge variant="info">{viewModal.data.penName}</Badge>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Total Quantity</p>
+                <p className="text-sm text-gray-500">Quantity / Animal</p>
                 <p className="font-medium">{viewModal.data.totalQuantity?.toFixed(2)} units</p>
               </div>
               <div>
@@ -265,15 +266,15 @@ const FeedRecipeList = () => {
 
             {viewModal.data.ingredients?.length > 0 && (
               <div>
-                <p className="text-sm text-gray-500 mb-2">Ingredients</p>
+                <p className="text-sm text-gray-500 mb-2">Ingredients (per animal)</p>
                 <div className="border rounded-lg overflow-hidden">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Ingredient</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Quantity</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Qty / Animal</th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Rate</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Total</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Cost / Animal</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
@@ -295,11 +296,14 @@ const FeedRecipeList = () => {
 
             <div className="pt-4 border-t">
               <div className="flex justify-between items-center">
-                <span className="text-lg font-semibold text-gray-700">Total Cost:</span>
+                <span className="text-lg font-semibold text-gray-700">Cost per Animal:</span>
                 <span className="text-2xl font-bold text-emerald-600">
                   {formatCurrency(viewModal.data.totalCost || 0)}
                 </span>
               </div>
+              <p className="text-xs text-gray-500 mt-2 text-right">
+                Total spend = this amount × number of animals in the shed when applied
+              </p>
             </div>
 
             <div className="flex gap-3 pt-4">

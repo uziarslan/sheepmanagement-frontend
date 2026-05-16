@@ -193,6 +193,24 @@ export const animalAPI = {
     } catch (error) {
       return handleError(error);
     }
+  },
+
+  restoreFromDead: async (animalId) => {
+    try {
+      const response = await axiosInstance.put(`/animals/${animalId}/restore-from-dead`);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  restoreFromSold: async (animalId) => {
+    try {
+      const response = await axiosInstance.put(`/animals/${animalId}/restore-from-sold`);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
   }
 };
 
@@ -408,6 +426,27 @@ export const employeeAPI = {
   getSummary: async () => {
     try {
       const response = await axiosInstance.get('/employees/summary');
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  // Mark an employee as separated (Resigned / Terminated / Retired / Inactive)
+  // with an effective date, reason, and optional write-off of advance balance.
+  separate: async (id, payload) => {
+    try {
+      const response = await axiosInstance.patch(`/employees/${id}/separate`, payload);
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  // Bring a previously-separated employee back to Active.
+  reactivate: async (id) => {
+    try {
+      const response = await axiosInstance.patch(`/employees/${id}/reactivate`);
       return handleResponse(response);
     } catch (error) {
       return handleError(error);
@@ -922,15 +961,26 @@ export const feedAPI = {
     }
   },
 
+  // Apply a recipe. Pass either `pen`/`penId` (single shed, back-compat) or
+  // `pens`/`penIds` (multiple sheds). The backend returns:
+  //   - single-pen mode → the populated FeedApplication
+  //   - multi-pen  mode → { applications, totalCost, totalAnimalCount, costPerAnimal }
   applyRecipe: async (data) => {
     try {
-      const transformedData = {
-        ...data,
-        recipe: data.recipeId || data.recipe,
-        pen: data.penId || data.pen
-      };
+      const transformedData = { ...data };
+      transformedData.recipe = data.recipeId || data.recipe;
+
+      const penArray = data.pens || data.penIds;
+      if (Array.isArray(penArray) && penArray.length > 0) {
+        transformedData.pens = penArray.map(String);
+        delete transformedData.pen;
+      } else if (data.pen || data.penId) {
+        transformedData.pen = data.penId || data.pen;
+      }
+
       delete transformedData.recipeId;
       delete transformedData.penId;
+      delete transformedData.penIds;
 
       const response = await axiosInstance.post('/feed/applications', transformedData);
       return handleResponse(response);
@@ -939,16 +989,24 @@ export const feedAPI = {
     }
   },
 
-  // P3-09: Apply recipe over a date range in a single backend call
+  // P3-09: Apply recipe over a date range in a single backend call. Also
+  // supports a `pens` array for multi-shed range applies.
   applyRecipeRange: async (data) => {
     try {
       const transformedData = {
         recipe: data.recipeId || data.recipe,
-        pen: data.penId || data.pen,
         dateStart: data.dateStart,
         dateEnd: data.dateEnd,
         notes: data.notes || null
       };
+
+      const penArray = data.pens || data.penIds;
+      if (Array.isArray(penArray) && penArray.length > 0) {
+        transformedData.pens = penArray.map(String);
+      } else if (data.pen || data.penId) {
+        transformedData.pen = data.penId || data.pen;
+      }
+
       const response = await axiosInstance.post('/feed/applications/range', transformedData);
       return handleResponse(response);
     } catch (error) {
@@ -1064,9 +1122,21 @@ export const salaryAPI = {
 
 // ============ AUDIT API ============
 export const auditAPI = {
+  // List logs with filters: { page, limit, userId, action, entityType,
+  // entityId, ip, search, startDate, endDate, sort }
   getAll: async (params = {}) => {
     try {
       const response = await axiosInstance.get('/audit-logs', { params });
+      return handleResponse(response);
+    } catch (error) {
+      return handleError(error);
+    }
+  },
+
+  // Distinct values for filter dropdowns: { actions, entityTypes, users }
+  getFacets: async () => {
+    try {
+      const response = await axiosInstance.get('/audit-logs/facets');
       return handleResponse(response);
     } catch (error) {
       return handleError(error);
