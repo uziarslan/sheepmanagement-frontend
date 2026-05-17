@@ -49,12 +49,24 @@ const EmployeeSalary = () => {
     paymentDate: new Date().toISOString().split('T')[0],
     advanceDeduction: '',
     otherDeductions: '',
+    additionalAmount: '',
+    isPartial: false,
+    payableDays: '',
+    daysInMonth: '',
     paymentMode: 'Cash',
     notes: ''
   });
   const [errors, setErrors] = useState({});
 
   const getId = (item) => item?._id ?? item?.id;
+
+  // Calendar days in a given 1-based month / year (e.g. Feb 2024 -> 29).
+  const getDaysInMonth = (m, y) => {
+    const mi = parseInt(m, 10);
+    const yi = parseInt(y, 10);
+    if (!mi || !yi) return 30;
+    return new Date(yi, mi, 0).getDate();
+  };
 
   useEffect(() => {
     fetchData();
@@ -92,6 +104,10 @@ const EmployeeSalary = () => {
       paymentDate: now.toISOString().split('T')[0],
       advanceDeduction: '',
       otherDeductions: '',
+      additionalAmount: '',
+      isPartial: false,
+      payableDays: '',
+      daysInMonth: String(getDaysInMonth(currentMonth, currentYear)),
       paymentMode: 'Cash',
       notes: ''
     });
@@ -115,8 +131,22 @@ const EmployeeSalary = () => {
   };
 
   const handleFormChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    setFormData((prev) => {
+      const next = { ...prev, [name]: type === 'checkbox' ? checked : value };
+      // Keep "days in month" in sync with the selected period unless the
+      // user is editing it directly.
+      if (name === 'month' || name === 'year') {
+        next.daysInMonth = String(
+          getDaysInMonth(name === 'month' ? value : prev.month, name === 'year' ? value : prev.year)
+        );
+      }
+      // Reset proration inputs when partial payment is switched off.
+      if (name === 'isPartial' && !checked) {
+        next.payableDays = '';
+      }
+      return next;
+    });
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: '' }));
     }
@@ -146,9 +176,25 @@ const EmployeeSalary = () => {
     if (otherDed < 0) {
       newErrors.otherDeductions = 'Other deductions cannot be negative';
     }
+    const addAmt = parseFloat(formData.additionalAmount || '0');
+    if (addAmt < 0) {
+      newErrors.additionalAmount = 'Additional amount cannot be negative';
+    }
     const empAdv = selectedEmployee?.advanceBalance || 0;
     if (advDed > empAdv) {
       newErrors.advanceDeduction = `Cannot deduct more than advance balance (${formatCurrency(empAdv)})`;
+    }
+    if (formData.isPartial) {
+      const dim = parseInt(formData.daysInMonth, 10);
+      const days = parseFloat(formData.payableDays || '0');
+      if (!dim || dim < 28 || dim > 31) {
+        newErrors.daysInMonth = 'Days in month must be between 28 and 31';
+      }
+      if (!days || days <= 0) {
+        newErrors.payableDays = 'Enter the number of days worked';
+      } else if (dim && days > dim) {
+        newErrors.payableDays = `Days worked cannot exceed ${dim}`;
+      }
     }
 
     setErrors(newErrors);
@@ -170,8 +216,14 @@ const EmployeeSalary = () => {
         paymentMode: formData.paymentMode,
         advanceDeduction: parseFloat(formData.advanceDeduction || '0'),
         otherDeductions: parseFloat(formData.otherDeductions || '0'),
+        additionalAmount: parseFloat(formData.additionalAmount || '0'),
         notes: formData.notes || undefined
       };
+
+      if (formData.isPartial) {
+        payload.payableDays = parseFloat(formData.payableDays);
+        payload.daysInMonth = parseInt(formData.daysInMonth, 10);
+      }
 
       const res = await salaryAPI.create(payload);
       if (res.success) {
@@ -505,6 +557,11 @@ const EmployeeSalary = () => {
                     <span className="text-sm text-gray-700">
                       {p.month}/{p.year}
                     </span>
+                    {p.isPartial && (
+                      <Badge variant="warning" className="ml-2">
+                        Partial {p.payableDays}/{p.daysInMonth}d
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell>
                     <span className="text-sm font-semibold text-emerald-700">
@@ -516,6 +573,9 @@ const EmployeeSalary = () => {
                       Adv: {formatCurrency(p.advanceDeduction || 0)}{' '}
                       {p.otherDeductions
                         ? `+ Other: ${formatCurrency(p.otherDeductions)}`
+                        : ''}
+                      {p.additionalAmount
+                        ? ` + Add: ${formatCurrency(p.additionalAmount)}`
                         : ''}
                     </span>
                   </TableCell>
@@ -617,6 +677,48 @@ const EmployeeSalary = () => {
               required
             />
 
+            {/* Partial / prorated payment — for employees who left mid-month */}
+            <div className="p-3 rounded-xl border border-amber-200 bg-amber-50">
+              <label className="flex items-start gap-2 text-sm text-amber-900 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="isPartial"
+                  checked={formData.isPartial}
+                  onChange={handleFormChange}
+                  className="mt-0.5"
+                />
+                <span>
+                  Partial payment — pay only for the days worked (e.g. employee
+                  left before completing the month).
+                </span>
+              </label>
+
+              {formData.isPartial && (
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <Input
+                    label="Days Worked"
+                    type="number"
+                    name="payableDays"
+                    value={formData.payableDays}
+                    onChange={handleFormChange}
+                    placeholder="e.g. 7"
+                    min="1"
+                    error={errors.payableDays}
+                  />
+                  <Input
+                    label="Days in Month"
+                    type="number"
+                    name="daysInMonth"
+                    value={formData.daysInMonth}
+                    onChange={handleFormChange}
+                    min="28"
+                    max="31"
+                    error={errors.daysInMonth}
+                  />
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <Input
                 label="Advance Deduction"
@@ -638,6 +740,22 @@ const EmployeeSalary = () => {
                 prefix="Rs."
                 error={errors.otherDeductions}
               />
+            </div>
+
+            <div>
+              <Input
+                label="Additional Amount (Optional)"
+                type="number"
+                name="additionalAmount"
+                value={formData.additionalAmount}
+                onChange={handleFormChange}
+                placeholder="0"
+                prefix="Rs."
+                error={errors.additionalAmount}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Bonus / extra pay added to the final paycheck
+              </p>
             </div>
 
             <Select
@@ -664,22 +782,41 @@ const EmployeeSalary = () => {
             {/* Net salary summary */}
             <div className="p-4 bg-emerald-50 rounded-xl text-sm">
               {(() => {
-                const gross =
+                const fullGross =
                   (selectedEmployee.salary || 0) + (selectedEmployee.allowances || 0);
+                const days = parseFloat(formData.payableDays || '0');
+                const dim = parseInt(formData.daysInMonth, 10) || 30;
+                const isPartial =
+                  formData.isPartial && days > 0 && days < dim;
+                const gross = isPartial
+                  ? Math.round((fullGross * days) / dim * 100) / 100
+                  : fullGross;
                 const advDed = parseFloat(formData.advanceDeduction || '0');
                 const otherDed = parseFloat(formData.otherDeductions || '0');
-                const net = Math.max(0, gross - advDed - otherDed);
+                const addAmt = parseFloat(formData.additionalAmount || '0');
+                const net = Math.max(0, gross - advDed - otherDed + addAmt);
                 return (
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-gray-700">
                         Gross: <span className="font-semibold">{formatCurrency(gross)}</span>
                       </p>
+                      {isPartial && (
+                        <p className="text-amber-700 text-xs mt-1">
+                          Prorated: {days} / {dim} days of{' '}
+                          {formatCurrency(fullGross)} full month
+                        </p>
+                      )}
                       <p className="text-gray-500 text-xs mt-1">
                         Deductions: {formatCurrency(advDed + otherDed)} (Advance:{' '}
                         {formatCurrency(advDed)}, Other:{' '}
                         {formatCurrency(otherDed)})
                       </p>
+                      {addAmt > 0 && (
+                        <p className="text-emerald-600 text-xs mt-1">
+                          + Additional: {formatCurrency(addAmt)}
+                        </p>
+                      )}
                     </div>
                     <div className="text-right">
                       <p className="text-xs text-emerald-600 font-medium">Net Salary</p>
