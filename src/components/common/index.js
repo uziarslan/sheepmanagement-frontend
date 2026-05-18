@@ -4,6 +4,7 @@ export { default as Card, CardHeader } from './Card';
 export { default as Modal, ConfirmDialog } from './Modal';
 export { default as Input } from './Input';
 export { default as Select } from './Select';
+export { default as SearchableSelect } from './SearchableSelect';
 export { default as Textarea } from './Textarea';
 export { default as Table, TableHead, TableHeader, TableBody, TableRow, TableCell, TableEmpty } from './Table';
 export { default as Badge } from './Badge';
