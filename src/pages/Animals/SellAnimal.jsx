@@ -15,7 +15,7 @@ import {
   PageHeader,
   Card,
   Button,
-  Select,
+  SearchableSelect,
   Input,
   Badge
 } from '../../components/common';
@@ -39,6 +39,7 @@ const SellAnimal = () => {
   const [confirmModal, setConfirmModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
+  const [searching, setSearching] = useState(false);
 
   // Bulk upload
   const [bulkFile, setBulkFile] = useState(null);
@@ -69,13 +70,39 @@ const SellAnimal = () => {
 
   // ============ SINGLE ANIMAL SALE ============
 
-  const handleAnimalSelect = (e) => {
-    const animalId = e.target.value;
+  const handleAnimalSelect = (animalId) => {
     setSelectedAnimalId(animalId);
     const animal = animals.find(a => (a._id || a.id) === animalId);
-    setSelectedAnimal(animal);
+    setSelectedAnimal(animal || null);
     setResult(null);
     setSaleData({ sellingPrice: '', sellingCost: '', soldDate: new Date().toISOString().split('T')[0] });
+  };
+
+  // Server-side search so animals beyond the initial page are still findable
+  // even when the herd is very large.
+  const searchAnimals = async (term) => {
+    try {
+      setSearching(true);
+      const params = { status: 'Active', limit: 100, sort: 'tagId' };
+      if (term) params.search = term;
+      const response = await animalAPI.getAll(params);
+      if (response.success) {
+        setAnimals((prev) => {
+          // Keep the currently selected animal in the list so its label and
+          // details remain available even if it's not in the new results.
+          const byId = new Map();
+          if (selectedAnimal) {
+            byId.set(selectedAnimal._id || selectedAnimal.id, selectedAnimal);
+          }
+          response.data.forEach((a) => byId.set(a._id || a.id, a));
+          return Array.from(byId.values());
+        });
+      }
+    } catch (error) {
+      toast.error('Failed to search animals');
+    } finally {
+      setSearching(false);
+    }
   };
 
   const handleSaleInputChange = (e) => {
@@ -527,16 +554,19 @@ const SellAnimal = () => {
               </div>
 
               <form onSubmit={handleSinglesaleSubmit} className="space-y-6">
-                <Select
+                <SearchableSelect
                   label="Select Animal"
-                  name="animalId"
                   value={selectedAnimalId}
                   onChange={handleAnimalSelect}
+                  onSearch={searchAnimals}
+                  loading={searching}
                   options={animals.map(a => ({
                     value: a._id || a.id,
                     label: `${a.tagId} - ${a.name || 'Unnamed'} (${a.animalType})`
                   }))}
                   placeholder="Choose an animal..."
+                  searchPlaceholder="Search by tag ID or name..."
+                  noOptionsText="No active animals match your search"
                   required
                 />
 
