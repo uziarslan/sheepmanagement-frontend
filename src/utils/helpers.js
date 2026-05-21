@@ -55,6 +55,17 @@ export const calculateAge = (birthDate) => {
   return `${months} month${months !== 1 ? 's' : ''}`;
 };
 
+// Days elapsed since the given date (createdAt, birthDate, etc.).
+// Returns null when the input is missing/invalid.
+export const calculateDaysSince = (date) => {
+  if (!date) return null;
+  const start = new Date(date);
+  if (Number.isNaN(start.getTime())) return null;
+  const diffMs = Date.now() - start.getTime();
+  if (diffMs < 0) return 0;
+  return Math.floor(diffMs / (24 * 60 * 60 * 1000));
+};
+
 // Generate Tag ID
 export const generateTagId = (prefix = 'SHP', number) => {
   return `${prefix}-${String(number).padStart(3, '0')}`;
