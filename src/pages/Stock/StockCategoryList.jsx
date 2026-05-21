@@ -43,14 +43,24 @@ const StockCategoryList = ({
 
   const getId = (item) => item?._id ?? item?.id;
 
+  // Server-side search: when the user types, refetch matching stocks so
+  // results aren't limited to the first 100-record page. Debounced 300ms.
+  // Also covers the initial load and category changes.
   useEffect(() => {
-    fetchStocks();
+    const id = setTimeout(() => {
+      fetchStocks(search.trim());
+    }, 300);
+    return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category]);
+  }, [search, category]);
 
-  const fetchStocks = async () => {
+  const fetchStocks = async (term = '') => {
     try {
-      const response = await stockAPI.getAll({ category });
+      // Backend caps stock listing at 100 records per request; server-side
+      // search keeps results relevant even when the inventory exceeds that.
+      const params = { category, limit: 100 };
+      if (term) params.search = term;
+      const response = await stockAPI.getAll(params);
       if (response.success) {
         setStocks(response.data);
       }
