@@ -16,6 +16,7 @@ import {
   Button,
   Input,
   Select,
+  SearchableSelect,
   Textarea,
   SearchInput,
   Badge,
@@ -120,7 +121,7 @@ const Deworming = () => {
         // Backend caps limit at 100; for pen-specific selection we fetch by pen below
         animalAPI.getAll({ limit: 100 }),
         penAPI.getAll({ limit: 100 }),
-        stockAPI.getAll(),
+        stockAPI.getAll({ category: 'Medication', limit: 100 }),
         employeeAPI.getAll(),
         healthAPI.getDewormings()
       ]);
@@ -176,6 +177,35 @@ const Deworming = () => {
   const handleMedicineChange = (e) => {
     const { name, value } = e.target;
     setSelectedMedicine(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Server-side search for the medicine dropdown — supports inventories
+  // with more medicines than the 100-record page size.
+  const [medicineSearchLoading, setMedicineSearchLoading] = useState(false);
+  const searchMedicines = async (term) => {
+    try {
+      setMedicineSearchLoading(true);
+      const params = { category: 'Medication', limit: 100 };
+      if (term) params.search = term;
+      const res = await stockAPI.getAll(params);
+      if (res.success) {
+        const meds = (res.data || []).filter(s => s.category === 'Medication');
+        const grouped = groupStocksByNameAndRate(meds);
+        setMedicines((prev) => {
+          // Preserve currently selected medicine even if it's not in the
+          // latest search results, so its label stays visible.
+          const byId = new Map();
+          const sel = prev.find(m => String(getId(m)) === String(selectedMedicine.medicineId));
+          if (sel) byId.set(String(getId(sel)), sel);
+          grouped.forEach(m => byId.set(String(getId(m)), m));
+          return Array.from(byId.values());
+        });
+      }
+    } catch (_) {
+      // Silent — typeahead failures shouldn't surface as toasts.
+    } finally {
+      setMedicineSearchLoading(false);
+    }
   };
 
   const addMedicine = () => {
@@ -672,15 +702,18 @@ const Deworming = () => {
             </label>
             <div className="flex gap-3">
               <div className="flex-1">
-                <Select
-                  name="medicineId"
+                <SearchableSelect
                   value={selectedMedicine.medicineId}
-                  onChange={handleMedicineChange}
+                  onChange={(v) => setSelectedMedicine(prev => ({ ...prev, medicineId: v }))}
+                  onSearch={searchMedicines}
+                  loading={medicineSearchLoading}
                   options={medicines.map(m => ({
                     value: getId(m),
                     label: `${m.productName} (Stock: ${m.currentQty} ${m.unit})`
                   }))}
                   placeholder="Select medicine"
+                  searchPlaceholder="Search medicines..."
+                  noOptionsText="No medicines match your search"
                 />
               </div>
               <div className="w-32">
