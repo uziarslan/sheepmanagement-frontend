@@ -9,12 +9,13 @@ import {
   HiOutlineFilter,
   HiOutlineDocumentDownload,
   HiOutlineExclamationCircle,
-  HiOutlineShoppingCart
+  HiOutlineShoppingCart,
+  HiOutlineClock
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
 import { useAuth } from '../../Context/AuthContext';
 import { animalAPI, penAPI } from '../../services/api';
-import { formatCurrency, getStatusColor } from '../../utils/helpers';
+import { formatCurrency, getStatusColor, calculateDaysSince } from '../../utils/helpers';
 import ExcelJS from 'exceljs';
 import {
   PageHeader,
@@ -35,6 +36,10 @@ import { ConfirmDialog } from '../../components/common/Modal';
 import { PageLoader } from '../../components/common/Spinner';
 import { animalTypes, breedTypes, animalStatuses } from '../../data/mockData';
 
+// Threshold (in days) at which animals are flagged as "on farm for too long"
+// and surfaced as a prominent alert. Client-requested cut-off.
+const OVER_AGE_DAYS = 85;
+
 const AnimalList = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -50,8 +55,13 @@ const AnimalList = () => {
     type: '',
     breed: '',
     status: '',
-    penId: ''
+    penId: '',
+    // 'overAge' is purely UI-side; when true we send minDaysSinceAdded.
+    overAge: false
   });
+  // Total count of "85+ days on farm" Active animals, across all pages.
+  // Drives the alert banner regardless of which page the user is on.
+  const [overAgeCount, setOverAgeCount] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
   const [deleteModal, setDeleteModal] = useState({ open: false, animal: null });
   const [deleting, setDeleting] = useState(false);
@@ -66,12 +76,25 @@ const AnimalList = () => {
         sort: 'tagId',
         ...overrides
       };
-      // fall back to current state if not overridden
-      if (params.status === undefined && filters.status) params.status = filters.status;
-      if (params.animalType === undefined && filters.type) params.animalType = filters.type;
-      if (params.breedType === undefined && filters.breed) params.breedType = filters.breed;
-      if (params.pen === undefined && filters.penId) params.pen = filters.penId;
-      if (params.search === undefined && search) params.search = search;
+      // Fall back to current state ONLY when the caller didn't mention the
+      // key at all. `key in overrides` distinguishes "explicitly cleared
+      // (key: undefined)" from "not specified" — important for clearFilters
+      // which would otherwise re-pick stale filter state via the closure.
+      if (!('status' in overrides) && filters.status) params.status = filters.status;
+      if (!('animalType' in overrides) && filters.type) params.animalType = filters.type;
+      if (!('breedType' in overrides) && filters.breed) params.breedType = filters.breed;
+      if (!('pen' in overrides) && filters.penId) params.pen = filters.penId;
+      if (!('search' in overrides) && search) params.search = search;
+      if (!('minDaysSinceAdded' in overrides) && filters.overAge) {
+        params.minDaysSinceAdded = OVER_AGE_DAYS;
+      }
+      // Strip explicitly-cleared keys so they aren't sent on the query
+      // string. Empty strings (e.g. search: '') are dropped too — the
+      // backend Joi `string()` schemas reject empty values and would 400
+      // the whole request, leaving the previous filter results visible.
+      Object.keys(params).forEach((k) => {
+        if (params[k] === undefined || params[k] === '') delete params[k];
+      });
 
       const [animalsRes, pensRes] = await Promise.all([
         animalAPI.getAll(params),
@@ -93,8 +116,26 @@ const AnimalList = () => {
   // Initial load
   useEffect(() => {
     fetchData();
+    fetchOverAgeCount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Separate lightweight query (limit=1) just to read the total count of
+  // animals on the farm 85+ days — drives the alert banner. Cheap because
+  // we only care about meta.total.
+  const fetchOverAgeCount = async () => {
+    try {
+      const res = await animalAPI.getAll({
+        status: 'Active',
+        minDaysSinceAdded: OVER_AGE_DAYS,
+        limit: 1,
+        page: 1
+      });
+      if (res?.success) setOverAgeCount(res.meta?.total || 0);
+    } catch (_) {
+      // Non-fatal: the alert just won't render.
+    }
+  };
 
   const handleDelete = async () => {
     if (!deleteModal.animal) return;
@@ -104,8 +145,9 @@ const AnimalList = () => {
       await animalAPI.delete(deleteModal.animal.id);
       toast.success('Animal deleted successfully');
       setDeleteModal({ open: false, animal: null });
-      // refresh current page
+      // refresh current page + the alert count
       fetchData();
+      fetchOverAgeCount();
     } catch (error) {
       toast.error(error.message || 'Failed to delete animal');
     } finally {
@@ -115,7 +157,8 @@ const AnimalList = () => {
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    const newFilters = { ...filters, [name]: value };
+    const nextValue = name === 'overAge' ? value === 'over' : value;
+    const newFilters = { ...filters, [name]: nextValue };
     setFilters(newFilters);
     setPage(1);
     const overrides = {};
@@ -123,15 +166,41 @@ const AnimalList = () => {
     if (newFilters.type) overrides.animalType = newFilters.type;
     if (newFilters.breed) overrides.breedType = newFilters.breed;
     if (newFilters.penId) overrides.pen = newFilters.penId;
+    if (newFilters.overAge) overrides.minDaysSinceAdded = OVER_AGE_DAYS;
     if (search) overrides.search = search;
     fetchData({ ...overrides, page: 1 });
   };
 
+  // Convenience: jump straight to the 85+ days view from the alert banner.
+  const showOnlyOverAge = () => {
+    const newFilters = { ...filters, status: 'Active', overAge: true };
+    setFilters(newFilters);
+    setShowFilters(true);
+    setPage(1);
+    fetchData({
+      page: 1,
+      status: 'Active',
+      minDaysSinceAdded: OVER_AGE_DAYS,
+      animalType: filters.type || undefined,
+      breedType: filters.breed || undefined,
+      pen: filters.penId || undefined,
+      search: search || undefined
+    });
+  };
+
   const clearFilters = () => {
-    setFilters({ type: '', breed: '', status: '', penId: '' });
+    setFilters({ type: '', breed: '', status: '', penId: '', overAge: false });
     setSearch('');
     setPage(1);
-    fetchData({ page: 1, search: '', status: undefined, animalType: undefined, breedType: undefined, pen: undefined });
+    fetchData({
+      page: 1,
+      search: '',
+      status: undefined,
+      animalType: undefined,
+      breedType: undefined,
+      pen: undefined,
+      minDaysSinceAdded: undefined
+    });
   };
 
   const handleSearchChange = (value) => {
@@ -174,6 +243,7 @@ const AnimalList = () => {
         ...(filters.type ? { animalType: filters.type } : {}),
         ...(filters.breed ? { breedType: filters.breed } : {}),
         ...(filters.penId ? { pen: filters.penId } : {}),
+        ...(filters.overAge ? { minDaysSinceAdded: OVER_AGE_DAYS } : {}),
         ...(search ? { search } : {})
       };
 
@@ -285,6 +355,33 @@ const AnimalList = () => {
         }
       />
 
+      {/* 85+ days on farm alert — surfaces stale-roster animals at a glance. */}
+      {overAgeCount > 0 && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <HiOutlineClock className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-amber-900">
+                {overAgeCount} active animal{overAgeCount === 1 ? ' has' : 's have'} been on the farm for {OVER_AGE_DAYS}+ days
+              </p>
+              <p className="text-xs text-amber-800">
+                Review these for sale or transfer to keep your fattening cycle on track.
+              </p>
+            </div>
+          </div>
+          {!filters.overAge && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={showOnlyOverAge}
+              className="border-amber-400 text-amber-800 hover:bg-amber-100"
+            >
+              Show only these
+            </Button>
+          )}
+        </div>
+      )}
+
       <Card>
         {/* Search and Filters */}
         <div className="space-y-4 mb-6">
@@ -336,6 +433,15 @@ const AnimalList = () => {
                 options={pens.map(p => ({ value: p._id || p.id, label: p.name }))}
                 placeholder="All Pens"
               />
+              <Select
+                name="overAge"
+                value={filters.overAge ? 'over' : ''}
+                onChange={handleFilterChange}
+                options={[
+                  { value: 'over', label: `On farm ${OVER_AGE_DAYS}+ days` }
+                ]}
+                placeholder="Any age on farm"
+              />
               <div className="sm:col-span-2 lg:col-span-4 flex justify-end">
                 <Button variant="ghost" size="sm" onClick={clearFilters}>
                   Clear Filters
@@ -374,14 +480,28 @@ const AnimalList = () => {
                 colSpan={15}
               />
             ) : (
-              filteredAnimals.map((animal) => (
-                <TableRow key={getId(animal)}>
+              filteredAnimals.map((animal) => {
+                const daysOnFarm = calculateDaysSince(animal.createdAt);
+                const overAge = daysOnFarm != null && daysOnFarm >= OVER_AGE_DAYS;
+                return (
+                <TableRow
+                  key={getId(animal)}
+                  className={overAge ? 'bg-amber-50' : ''}
+                >
                   <TableCell>
                     <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-                        <GiSheep className="w-6 h-6 text-emerald-600" />
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${overAge ? 'bg-amber-100' : 'bg-emerald-100'}`}>
+                        <GiSheep className={`w-6 h-6 ${overAge ? 'text-amber-600' : 'text-emerald-600'}`} />
                       </div>
-                      <span className="font-medium text-gray-900">{animal.name}</span>
+                      <div>
+                        <span className="font-medium text-gray-900">{animal.name}</span>
+                        {overAge && (
+                          <Badge variant="warning" className="ml-2 inline-flex items-center gap-1 text-xs">
+                            <HiOutlineClock className="w-3 h-3" />
+                            {daysOnFarm}d on farm
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -390,9 +510,14 @@ const AnimalList = () => {
                     </span>
                   </TableCell>
                   <TableCell>
-                    <span className="text-sm text-gray-600">
+                    <div className="text-sm text-gray-600">
                       {animal.createdAt ? new Date(animal.createdAt).toLocaleDateString() : '-'}
-                    </span>
+                      {daysOnFarm != null && (
+                        <p className={`text-xs ${overAge ? 'text-amber-700 font-medium' : 'text-gray-400'}`}>
+                          {daysOnFarm} day{daysOnFarm === 1 ? '' : 's'} ago
+                        </p>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div>
@@ -474,7 +599,8 @@ const AnimalList = () => {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))
+                );
+              })
             )}
           </TableBody>
         </Table>

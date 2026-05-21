@@ -15,7 +15,7 @@ import {
   Card,
   Button,
   Input,
-  Select,
+  SearchableSelect,
   Textarea
 } from '../../components/common';
 import { PageLoader } from '../../components/common/Spinner';
@@ -48,8 +48,10 @@ const CreateVaccine = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      const stocksRes = await stockAPI.getAll();
-      
+      // Backend caps at 100; the searchable dropdown refetches by term
+      // for inventories larger than the first page.
+      const stocksRes = await stockAPI.getAll({ category: 'Medication', limit: 100 });
+
       if (stocksRes.success) {
         const meds = stocksRes.data.filter(s => s.category === 'Medication');
         setMedications(groupStocksByNameAndRate(meds));
@@ -82,6 +84,35 @@ const CreateVaccine = () => {
   const handleMedicineChange = (e) => {
     const { name, value } = e.target;
     setSelectedMedicine(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Server-side search for the medicine dropdown so it remains usable when
+  // the medicine inventory exceeds the 100-record page size.
+  const [medicineSearchLoading, setMedicineSearchLoading] = useState(false);
+  const searchMedicines = async (term) => {
+    try {
+      setMedicineSearchLoading(true);
+      const params = { category: 'Medication', limit: 100 };
+      if (term) params.search = term;
+      const res = await stockAPI.getAll(params);
+      if (res.success) {
+        const meds = (res.data || []).filter(s => s.category === 'Medication');
+        const grouped = groupStocksByNameAndRate(meds);
+        setMedications((prev) => {
+          // Keep the currently selected medicine in the list so its label
+          // stays visible even if it's outside the new search results.
+          const byId = new Map();
+          const sel = prev.find(m => String(getId(m)) === String(selectedMedicine.medicineId));
+          if (sel) byId.set(String(getId(sel)), sel);
+          grouped.forEach(m => byId.set(String(getId(m)), m));
+          return Array.from(byId.values());
+        });
+      }
+    } catch (_) {
+      // Silent — typeahead failures shouldn't surface as toasts.
+    } finally {
+      setMedicineSearchLoading(false);
+    }
   };
 
 
@@ -310,18 +341,19 @@ const CreateVaccine = () => {
                 </label>
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <Select
-                      name="medicineId"
+                    <SearchableSelect
                       value={selectedMedicine.medicineId}
-                      onChange={handleMedicineChange}
+                      onChange={(v) => setSelectedMedicine(prev => ({ ...prev, medicineId: v }))}
+                      onSearch={searchMedicines}
+                      loading={medicineSearchLoading}
+                      options={medications.map(med => ({
+                        value: getId(med),
+                        label: `${med.productName} (Stock: ${med.currentQty} ${med.unit})`
+                      }))}
                       placeholder="Select medicine"
-                    >
-                      {medications.map(med => (
-                        <option key={getId(med)} value={getId(med)}>
-                          {med.productName} (Stock: {med.currentQty} {med.unit})
-                        </option>
-                      ))}
-                    </Select>
+                      searchPlaceholder="Search medicines..."
+                      noOptionsText="No medicines match your search"
+                    />
                   </div>
                   <div className="w-32">
                     <Input
