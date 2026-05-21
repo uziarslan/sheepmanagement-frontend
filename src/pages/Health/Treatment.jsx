@@ -18,6 +18,7 @@ import {
   Button,
   Input,
   Select,
+  SearchableSelect,
   Textarea,
   SearchInput,
   Badge,
@@ -120,7 +121,7 @@ const Treatment = () => {
       const [animalsRes, stocksRes, treatmentsRes] = await Promise.all([
         // Backend caps limit at 100; default is 10 which feels "random" in dropdowns.
         animalAPI.getAll({ limit: 100, sort: 'tagId' }),
-        stockAPI.getAll(),
+        stockAPI.getAll({ category: 'Medication', limit: 100 }),
         healthAPI.getTreatments()
       ]);
       
@@ -141,6 +142,45 @@ const Treatment = () => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
+  };
+
+  // Wraps the medicine-id change from the searchable dropdown so the same
+  // "auto-set unit" behaviour from handleMedicineChange still applies.
+  const handleMedicineIdChange = (value) => {
+    setSelectedMedicine(prev => ({ ...prev, medicineId: value }));
+    if (value) {
+      const medicine = medicines.find(m => String(getId(m)) === String(value));
+      if (medicine) {
+        setSelectedMedicine(prev => ({ ...prev, unit: medicine.unit }));
+      }
+    }
+  };
+
+  // Server-side search for medicines so the dropdown remains usable when the
+  // inventory exceeds the 100-record page size.
+  const [medicineSearchLoading, setMedicineSearchLoading] = useState(false);
+  const searchMedicines = async (term) => {
+    try {
+      setMedicineSearchLoading(true);
+      const params = { category: 'Medication', limit: 100 };
+      if (term) params.search = term;
+      const res = await stockAPI.getAll(params);
+      if (res.success) {
+        const meds = (res.data || []).filter(s => s.category === 'Medication');
+        const grouped = groupStocksByNameAndRate(meds);
+        setMedicines((prev) => {
+          const byId = new Map();
+          const sel = prev.find(m => String(getId(m)) === String(selectedMedicine.medicineId));
+          if (sel) byId.set(String(getId(sel)), sel);
+          grouped.forEach(m => byId.set(String(getId(m)), m));
+          return Array.from(byId.values());
+        });
+      }
+    } catch (_) {
+      // Silent.
+    } finally {
+      setMedicineSearchLoading(false);
+    }
   };
 
   const handleMedicineChange = (e) => {
@@ -608,15 +648,18 @@ const Treatment = () => {
             </label>
             <div className="flex gap-3">
               <div className="flex-1">
-                <Select
-                  name="medicineId"
+                <SearchableSelect
                   value={selectedMedicine.medicineId}
-                  onChange={handleMedicineChange}
+                  onChange={handleMedicineIdChange}
+                  onSearch={searchMedicines}
+                  loading={medicineSearchLoading}
                   options={medicines.map(m => ({
                     value: getId(m),
                     label: `${m.productName} (Stock: ${m.currentQty ?? 0} ${m.unit}) - ${formatCurrency(m.openingRatePerUnit || 0)}/${m.unit}`
                   }))}
                   placeholder="Select medicine"
+                  searchPlaceholder="Search medicines..."
+                  noOptionsText="No medicines match your search"
                 />
               </div>
               <div className="w-24">

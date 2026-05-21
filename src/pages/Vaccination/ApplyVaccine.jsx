@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import {
@@ -14,6 +14,7 @@ import {
   Button,
   Input,
   Select,
+  SearchableSelect,
   Textarea,
   Badge
 } from '../../components/common';
@@ -35,7 +36,9 @@ const ApplyVaccine = () => {
     date: new Date().toISOString().split('T')[0],
     vaccineRecipeId: preSelectedVaccineId || '',
     scope: 'Pen',
-    penId: '',
+    // Multi-shed: 'Pen' scope now accepts one or more pen IDs (mirrors
+    // ApplyRecipe / Feeding). Submit fans out one request per pen.
+    penIds: [],
     animalId: '',
     selectedAnimals: [],
     nextDueDate: '',
@@ -51,12 +54,14 @@ const ApplyVaccine = () => {
   }, []);
 
   useEffect(() => {
-    if (formData.scope === 'Pen' && formData.penId) {
-      fetchPenAnimals(formData.penId);
-    } else if (formData.scope !== 'Pen') {
+    // For 'Pen' scope the backend expands pen → animals on its own. We rely
+    // on each pen's animalCount for totals (same approach as Feeding's
+    // ApplyRecipe). For Individual/Multiple scopes we still need the full
+    // animal list for the dropdown / picker.
+    if (formData.scope !== 'Pen') {
       fetchAllAnimals();
     }
-  }, [formData.scope, formData.penId]);
+  }, [formData.scope]);
 
   useEffect(() => {
     if (formData.vaccineRecipeId) {
@@ -70,7 +75,9 @@ const ApplyVaccine = () => {
   const fetchData = async () => {
     try {
       const [vaccinesRes, pensRes] = await Promise.all([
-        vaccinationAPI.getAllVaccines(),
+        // Backend caps at 100; for >100 vaccines the searchable dropdown
+        // will refetch server-side as the user types.
+        vaccinationAPI.getAllVaccines({ limit: 100 }),
         penAPI.getAll({ limit: 100 })
       ]);
       
@@ -87,21 +94,6 @@ const ApplyVaccine = () => {
   // paginated slice. Default backend limit is 10 — pass a large limit so the
   // dropdown / count reflects reality. Backend caps at 5000.
   const ANIMAL_FETCH_LIMIT = 5000;
-
-  const fetchPenAnimals = async (penId) => {
-    try {
-      const response = await animalAPI.getAll({
-        pen: penId,
-        status: 'Active',
-        limit: ANIMAL_FETCH_LIMIT
-      });
-      if (response.success) setAnimals(response.data);
-    } catch (error) {
-      if (typeof console !== 'undefined' && console.error) {
-        console.error('Failed to fetch pen animals', error);
-      }
-    }
-  };
 
   const fetchAllAnimals = async () => {
     try {
@@ -123,6 +115,92 @@ const ApplyVaccine = () => {
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
   };
 
+  // SearchableSelect calls onChange with the raw value (not an event).
+  const setField = (name, value) => {
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
+  };
+
+  // Server-side search for the vaccine and animal dropdowns so they remain
+  // usable when the underlying lists exceed the 100-record page size.
+  const [vaccineSearchLoading, setVaccineSearchLoading] = useState(false);
+  const searchVaccines = async (term) => {
+    try {
+      setVaccineSearchLoading(true);
+      const params = { limit: 100 };
+      if (term) params.search = term;
+      const res = await vaccinationAPI.getAllVaccines(params);
+      if (res.success) {
+        setVaccines((prev) => {
+          const byId = new Map();
+          const sel = prev.find(v => getId(v) === formData.vaccineRecipeId);
+          if (sel) byId.set(getId(sel), sel);
+          res.data.forEach(v => byId.set(getId(v), v));
+          return Array.from(byId.values());
+        });
+      }
+    } catch (_) {
+      // Silent — typeahead failures shouldn't surface as toasts.
+    } finally {
+      setVaccineSearchLoading(false);
+    }
+  };
+
+  const [animalSearchLoading, setAnimalSearchLoading] = useState(false);
+  const searchAnimals = async (term) => {
+    try {
+      setAnimalSearchLoading(true);
+      const params = { status: 'Active', limit: ANIMAL_FETCH_LIMIT, sort: 'tagId' };
+      if (term) params.search = term;
+      const res = await animalAPI.getAll(params);
+      if (res.success) {
+        setAnimals((prev) => {
+          const byId = new Map();
+          const sel = prev.find(a => getId(a) === formData.animalId);
+          if (sel) byId.set(getId(sel), sel);
+          res.data.forEach(a => byId.set(getId(a), a));
+          return Array.from(byId.values());
+        });
+      }
+    } catch (_) {
+      // Silent.
+    } finally {
+      setAnimalSearchLoading(false);
+    }
+  };
+
+  // ---- Multi-pen helpers (mirror ApplyRecipe / Feeding) ----
+  const togglePen = (penId) => {
+    const key = String(penId);
+    setFormData(prev => {
+      const has = prev.penIds.includes(key);
+      return {
+        ...prev,
+        penIds: has ? prev.penIds.filter(p => p !== key) : [...prev.penIds, key]
+      };
+    });
+    if (errors.penIds) setErrors(prev => ({ ...prev, penIds: '' }));
+  };
+
+  const selectAllPens = () => {
+    setFormData(prev => ({
+      ...prev,
+      penIds: pens.filter(p => (p.animalCount ?? 0) > 0).map(p => String(getId(p)))
+    }));
+    if (errors.penIds) setErrors(prev => ({ ...prev, penIds: '' }));
+  };
+
+  const clearPenSelection = () => {
+    setFormData(prev => ({ ...prev, penIds: [] }));
+  };
+
+  // Total animals across the picked sheds — used for validation, the toast,
+  // and the preview summary.
+  const totalPenAnimals = useMemo(() => {
+    const picked = pens.filter(p => formData.penIds.includes(String(getId(p))));
+    return picked.reduce((sum, p) => sum + (p.animalCount || 0), 0);
+  }, [pens, formData.penIds]);
+
   const handleAnimalSelection = (animalId) => {
     setFormData(prev => {
       const isSelected = prev.selectedAnimals.includes(animalId);
@@ -139,7 +217,9 @@ const ApplyVaccine = () => {
     const newErrors = {};
 
     if (!formData.vaccineRecipeId) newErrors.vaccineRecipeId = 'Please select a vaccine';
-    if (formData.scope === 'Pen' && !formData.penId) newErrors.penId = 'Please select a pen';
+    if (formData.scope === 'Pen' && formData.penIds.length === 0) {
+      newErrors.penIds = 'Please select at least one shed';
+    }
     if (formData.scope === 'Individual' && !formData.animalId) newErrors.animalId = 'Please select an animal';
     if (formData.scope === 'Multiple' && formData.selectedAnimals.length === 0) {
       newErrors.selectedAnimals = 'Please select at least one animal';
@@ -158,39 +238,108 @@ const ApplyVaccine = () => {
 
     setApplying(true);
     try {
-      const applicationData = {
+      const baseData = {
         date: formData.date,
         vaccineRecipeId: formData.vaccineRecipeId,
-        scope: formData.scope,
-        pen: formData.scope === 'Pen' ? formData.penId : undefined,
-        animal: formData.scope === 'Individual' ? formData.animalId : undefined,
-        animals: formData.scope === 'Multiple' ? formData.selectedAnimals : undefined,
         nextDueDate: formData.nextDueDate || undefined,
         remarks: formData.remarks || undefined
       };
 
-      const response = await vaccinationAPI.applyVaccine(applicationData);
-      
-      if (response.success) {
-        const animalCount = formData.scope === 'Pen' 
-          ? animals.length 
-          : formData.scope === 'Multiple' 
-            ? formData.selectedAnimals.length 
-            : 1;
-        toast.success(`Vaccine applied successfully to ${animalCount} animal(s)`);
-        
-        // Reset form
-        setFormData({
-          date: new Date().toISOString().split('T')[0],
-          vaccineRecipeId: '',
-          scope: 'Pen',
-          penId: '',
-          animalId: '',
-          selectedAnimals: [],
-          nextDueDate: '',
-          remarks: ''
+      if (formData.scope === 'Pen') {
+        // Fan-out: one applyVaccine request per selected shed. The backend
+        // currently accepts a single pen per call and keeps its per-pen
+        // atomicity (stock deduction, animal cost distribution). Aggregating
+        // multi-pen on the backend would be a bigger refactor — defer.
+        const results = await Promise.allSettled(
+          formData.penIds.map((penId) =>
+            vaccinationAPI.applyVaccine({
+              ...baseData,
+              scope: 'Pen',
+              pen: penId
+            })
+          )
+        );
+
+        const successes = [];
+        const failures = [];
+        results.forEach((r, idx) => {
+          const penId = formData.penIds[idx];
+          const pen = pens.find(p => String(getId(p)) === String(penId));
+          const penName = pen?.name || `Pen ${idx + 1}`;
+          if (r.status === 'fulfilled' && r.value?.success) {
+            successes.push(penName);
+          } else {
+            const msg = r.status === 'rejected'
+              ? (r.reason?.message || 'Request failed')
+              : (r.value?.message || 'Request failed');
+            failures.push(`${penName}: ${msg}`);
+          }
         });
-        setSelectedVaccine(null);
+
+        if (successes.length > 0) {
+          toast.success(
+            `Vaccine applied to ${successes.length} shed${successes.length === 1 ? '' : 's'}` +
+            ` (${totalPenAnimals} animal${totalPenAnimals === 1 ? '' : 's'} total)`
+          );
+        }
+        failures.forEach((line) => toast.error(line));
+
+        if (failures.length === 0) {
+          // Only reset when everything succeeded — otherwise let the user
+          // retry the remaining sheds.
+          setFormData({
+            date: new Date().toISOString().split('T')[0],
+            vaccineRecipeId: '',
+            scope: 'Pen',
+            penIds: [],
+            animalId: '',
+            selectedAnimals: [],
+            nextDueDate: '',
+            remarks: ''
+          });
+          setSelectedVaccine(null);
+        } else {
+          // Drop the successful pens from the selection so a follow-up
+          // submit only retries the failures.
+          const successIds = new Set(
+            successes
+              .map(name => pens.find(p => p.name === name))
+              .filter(Boolean)
+              .map(p => String(getId(p)))
+          );
+          setFormData(prev => ({
+            ...prev,
+            penIds: prev.penIds.filter(id => !successIds.has(id))
+          }));
+        }
+      } else {
+        const applicationData = {
+          ...baseData,
+          scope: formData.scope,
+          animal: formData.scope === 'Individual' ? formData.animalId : undefined,
+          animals: formData.scope === 'Multiple' ? formData.selectedAnimals : undefined
+        };
+
+        const response = await vaccinationAPI.applyVaccine(applicationData);
+
+        if (response.success) {
+          const animalCount = formData.scope === 'Multiple'
+            ? formData.selectedAnimals.length
+            : 1;
+          toast.success(`Vaccine applied successfully to ${animalCount} animal(s)`);
+
+          setFormData({
+            date: new Date().toISOString().split('T')[0],
+            vaccineRecipeId: '',
+            scope: 'Pen',
+            penIds: [],
+            animalId: '',
+            selectedAnimals: [],
+            nextDueDate: '',
+            remarks: ''
+          });
+          setSelectedVaccine(null);
+        }
       }
     } catch (error) {
       toast.error(error.message || 'Failed to apply vaccine');
@@ -199,11 +348,11 @@ const ApplyVaccine = () => {
     }
   };
 
-  const selectedPen = pens.find(p => getId(p) === formData.penId);
-  const animalCount = formData.scope === 'Pen' 
-    ? animals.length 
-    : formData.scope === 'Multiple' 
-      ? formData.selectedAnimals.length 
+  const selectedPens = pens.filter(p => formData.penIds.includes(String(getId(p))));
+  const animalCount = formData.scope === 'Pen'
+    ? totalPenAnimals
+    : formData.scope === 'Multiple'
+      ? formData.selectedAnimals.length
       : 1;
 
   const totalCost = selectedVaccine ? (selectedVaccine.totalCost || 0) * animalCount : 0;
@@ -248,20 +397,22 @@ const ApplyVaccine = () => {
                   error={errors.date}
                 />
 
-                <Select
+                <SearchableSelect
                   label="Select Vaccine *"
-                  name="vaccineRecipeId"
                   value={formData.vaccineRecipeId}
-                  onChange={handleChange}
-                  error={errors.vaccineRecipeId}
+                  onChange={(v) => setField('vaccineRecipeId', v)}
+                  onSearch={searchVaccines}
+                  loading={vaccineSearchLoading}
+                  options={vaccines.map(vaccine => ({
+                    value: getId(vaccine),
+                    label: `${vaccine.name} (${vaccine.disease})`
+                  }))}
                   placeholder="Select a vaccine"
-                >
-                  {vaccines.map(vaccine => (
-                    <option key={getId(vaccine)} value={getId(vaccine)}>
-                      {vaccine.name} ({vaccine.disease})
-                    </option>
-                  ))}
-                </Select>
+                  searchPlaceholder="Search by name or disease..."
+                  noOptionsText="No vaccines match your search"
+                  error={errors.vaccineRecipeId}
+                  required
+                />
 
                 <Select
                   label="Scope *"
@@ -276,37 +427,104 @@ const ApplyVaccine = () => {
                 </Select>
 
                 {formData.scope === 'Pen' && (
-                  <Select
-                    label="Select Pen *"
-                    name="penId"
-                    value={formData.penId}
-                    onChange={handleChange}
-                    error={errors.penId}
-                    placeholder="Select a pen"
-                  >
-                    {pens.map(pen => (
-                      <option key={getId(pen)} value={getId(pen)}>
-                        {pen.name} ({pen.animalCount || 0} animals)
-                      </option>
-                    ))}
-                  </Select>
+                  <div className="sm:col-span-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Target Sheds / Pens{' '}
+                        <span className="text-xs text-gray-500 font-normal">
+                          (select one or more)
+                        </span>
+                      </label>
+                      <div className="flex items-center gap-3 text-xs">
+                        <button
+                          type="button"
+                          onClick={selectAllPens}
+                          className="text-emerald-600 hover:text-emerald-700 font-medium"
+                        >
+                          Select all
+                        </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          type="button"
+                          onClick={clearPenSelection}
+                          className="text-gray-500 hover:text-gray-700 font-medium"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="border border-gray-200 rounded-xl divide-y divide-gray-100 max-h-60 overflow-y-auto">
+                      {pens.length === 0 && (
+                        <p className="px-4 py-6 text-sm text-gray-500 text-center">
+                          No sheds available
+                        </p>
+                      )}
+                      {pens.map((p) => {
+                        const id = String(getId(p));
+                        const checked = formData.penIds.includes(id);
+                        const animalCount = p.animalCount ?? 0;
+                        const empty = animalCount === 0;
+                        return (
+                          <label
+                            key={id}
+                            className={`flex items-center justify-between gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                              checked ? 'bg-emerald-50' : 'hover:bg-gray-50'
+                            } ${empty ? 'opacity-60' : ''}`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => togglePen(id)}
+                                disabled={empty}
+                                className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
+                              />
+                              <div>
+                                <p className="text-sm font-medium text-gray-800">{p.name}</p>
+                                {empty && (
+                                  <p className="text-xs text-gray-400">No active animals</p>
+                                )}
+                              </div>
+                            </div>
+                            <Badge variant={empty ? 'default' : 'info'} className="text-xs">
+                              {animalCount} animal{animalCount === 1 ? '' : 's'}
+                            </Badge>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    {formData.penIds.length > 0 && (
+                      <p className="mt-2 text-sm text-gray-600">
+                        Selected: <strong>{formData.penIds.length} shed{formData.penIds.length === 1 ? '' : 's'}</strong>
+                        {' · '}
+                        <strong>{totalPenAnimals} animal{totalPenAnimals === 1 ? '' : 's'} total</strong>
+                      </p>
+                    )}
+                    {errors.penIds && (
+                      <p className="mt-1 text-sm text-red-600">{errors.penIds}</p>
+                    )}
+                  </div>
                 )}
 
                 {formData.scope === 'Individual' && (
-                  <Select
+                  <SearchableSelect
                     label="Select Animal *"
-                    name="animalId"
                     value={formData.animalId}
-                    onChange={handleChange}
-                    error={errors.animalId}
+                    onChange={(v) => setField('animalId', v)}
+                    onSearch={searchAnimals}
+                    loading={animalSearchLoading}
+                    options={animals.map(animal => ({
+                      value: getId(animal),
+                      label: `${animal.tagId}${animal.name ? ` - ${animal.name}` : ''}`
+                    }))}
                     placeholder="Select an animal"
-                  >
-                    {animals.map(animal => (
-                      <option key={getId(animal)} value={getId(animal)}>
-                        {animal.tagId}
-                      </option>
-                    ))}
-                  </Select>
+                    searchPlaceholder="Search by tag ID or name..."
+                    noOptionsText="No active animals match your search"
+                    error={errors.animalId}
+                    required
+                  />
                 )}
 
                 <Input
@@ -411,11 +629,18 @@ const ApplyVaccine = () => {
                   <Badge variant="info">{formData.scope}</Badge>
                 </div>
 
-                {formData.scope === 'Pen' && selectedPen && (
+                {formData.scope === 'Pen' && selectedPens.length > 0 && (
                   <div>
-                    <p className="text-sm text-gray-500">Pen</p>
-                    <p className="font-medium">{selectedPen.name}</p>
-                    <p className="text-sm text-gray-600">{animals.length} animals</p>
+                    <p className="text-sm text-gray-500">
+                      Shed{selectedPens.length === 1 ? '' : 's'}
+                    </p>
+                    <p className="font-medium">
+                      {selectedPens.map(p => p.name).join(', ')}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {selectedPens.length} shed{selectedPens.length === 1 ? '' : 's'} ·{' '}
+                      {totalPenAnimals} animal{totalPenAnimals === 1 ? '' : 's'}
+                    </p>
                   </div>
                 )}
 
