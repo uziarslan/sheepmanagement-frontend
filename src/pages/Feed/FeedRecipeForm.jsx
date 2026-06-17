@@ -349,6 +349,7 @@ const FeedRecipeForm = () => {
                     value={selectedIngredient.quantity}
                     onChange={handleIngredientChange}
                     placeholder="Qty"
+                    step="0.001"
                     max={selectedStockAvailable}
                   />
                 </div>
@@ -426,6 +427,7 @@ const FeedRecipeForm = () => {
                                 value={ing.quantity}
                                 onChange={(e) => updateIngredientQuantity(index, e.target.value)}
                                 className={`w-24 ${exceedsStock ? 'border-red-500 bg-red-50' : ''}`}
+                                step="0.001"
                                 max={ing.currentStock}
                               />
                               <span className="text-sm text-gray-500">{ing.unit}</span>
