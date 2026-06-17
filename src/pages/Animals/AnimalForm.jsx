@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { HiOutlineArrowLeft, HiOutlineRefresh } from 'react-icons/hi';
 import { animalAPI, penAPI } from '../../services/api';
+import { formatCurrency } from '../../utils/helpers';
 import {
   PageHeader,
   Card,
@@ -335,6 +336,32 @@ const AnimalForm = () => {
 
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {isEdit && formData.status === 'Sold' && (
+            <Card className="lg:col-span-3 border-blue-200 bg-blue-50">
+              <h3 className="text-lg font-semibold text-blue-800 mb-4">Sale Information</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="p-4 bg-white rounded-xl border border-blue-100">
+                  <p className="text-sm text-blue-500">Selling Price</p>
+                  <p className="text-2xl font-bold text-blue-700">
+                    {formData.soldPrice != null ? formatCurrency(formData.soldPrice) : '—'}
+                  </p>
+                </div>
+                <div className="p-4 bg-white rounded-xl border border-blue-100">
+                  <p className="text-sm text-blue-500">Selling Cost</p>
+                  <p className="text-2xl font-bold text-blue-700">
+                    {formData.soldCost != null ? formatCurrency(formData.soldCost) : '—'}
+                  </p>
+                </div>
+                <div className="p-4 bg-white rounded-xl border border-blue-100">
+                  <p className="text-sm text-blue-500">Sold Date</p>
+                  <p className="text-2xl font-bold text-blue-700">
+                    {formData.soldDate ? new Date(formData.soldDate).toLocaleDateString() : '—'}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+
           {/* Main Info */}
           <Card className="lg:col-span-2">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Basic Information</h3>

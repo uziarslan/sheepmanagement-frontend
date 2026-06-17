@@ -359,7 +359,7 @@ const CreateVaccine = () => {
                     <Input
                       name="quantity"
                       type="number"
-                      step="0.1"
+                      step="0.001"
                       placeholder="Qty"
                       value={selectedMedicine.quantity}
                       onChange={handleMedicineChange}
@@ -402,7 +402,7 @@ const CreateVaccine = () => {
                           <td className="px-4 py-3">
                             <input
                               type="number"
-                              step="0.1"
+                              step="0.001"
                               value={med.quantity}
                               onChange={(e) => updateMedicineQuantity(idx, e.target.value)}
                               className="w-20 px-2 py-1 border rounded"
