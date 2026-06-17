@@ -254,45 +254,178 @@ const AnimalList = () => {
         return;
       }
 
-      const headers = ['Tag ID', 'Name', 'Pen', 'Sex', 'Breed', 'Purchase Price', 'Buying Weight (kg)', 'Current Weight (kg)', 'Status', 'Added Date'];
-      const aoa = [headers];
-
-      for (const a of animalsAll) {
-        aoa.push([
-          a.tagId || '',
-          a.name || '',
-          getAnimalPenName(a),
-          a.sex || '',
-          a.breedType || '',
-          a.purchasePrice != null ? Number(a.purchasePrice) : '',
-          a.buyingWeight != null ? Number(a.buyingWeight) : '',
-          a.weight != null ? Number(a.weight) : '',
-          a.status || '',
-          a.createdAt ? new Date(a.createdAt).toLocaleDateString() : ''
-        ]);
-      }
+      // When the user has filtered to Sold animals, produce an enriched export with a
+      // full cost-and-profit breakdown for each sold animal. Otherwise keep the simple export.
+      const isSoldExport = filters.status === 'Sold';
 
       const wb = new ExcelJS.Workbook();
-      const sheet = wb.addWorksheet('Animals');
-      sheet.columns = aoa[0].map(() => ({ width: 18 }));
-      sheet.addRows(aoa);
+
+      if (isSoldExport) {
+        buildSoldAnimalsSheet(wb, animalsAll);
+      } else {
+        buildBasicAnimalsSheet(wb, animalsAll);
+      }
+
       const buffer = await wb.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `animals_${new Date().toISOString().slice(0,10)}.xlsx`;
+      const fileLabel = isSoldExport ? 'sold_animals' : 'animals';
+      a.download = `${fileLabel}_${new Date().toISOString().slice(0,10)}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      toast.success(`Exported ${animalsAll.length} animals`);
+      toast.success(`Exported ${animalsAll.length} ${isSoldExport ? 'sold ' : ''}animals`);
     } catch (err) {
       if (typeof console !== 'undefined' && console.error) {
         console.error('Export failed', err);
       }
       toast.error(err.message || 'Failed to export animals');
     }
+  };
+
+  // Safely coerce any value to a non-negative number (blank/invalid -> 0)
+  const toNum = (v) => (v == null || v === '' || isNaN(Number(v)) ? 0 : Number(v));
+
+  // Replicates the backend animal model's cost/profit virtuals so the Excel
+  // breakdown matches what the client sees on the animal detail / sell pages.
+  const computeAnimalBreakdown = (a) => {
+    const purchasePrice = toNum(a.purchasePrice);
+    const buyingWeight = toNum(a.buyingWeight);
+    const weight = toNum(a.weight);
+
+    const purchaseExpenses =
+      toNum(a.purchaseTransport) + toNum(a.purchaseMandiExpenses) +
+      toNum(a.purchaseFuel) + toNum(a.purchaseFood) + toNum(a.purchaseHotel);
+    const totalPurchaseCost = purchasePrice + purchaseExpenses;
+
+    const operationalCost =
+      toNum(a.totalFeedCost) + toNum(a.totalHealthCost) +
+      toNum(a.totalVaccinationCost) + toNum(a.totalDewormingCost) +
+      toNum(a.totalSalaryCost);
+
+    const totalPrice = totalPurchaseCost + operationalCost;
+    const weightForPurchaseKg = buyingWeight || weight;
+    const purchasePricePerKg = weightForPurchaseKg ? Math.round(purchasePrice / weightForPurchaseKg) : 0;
+    const totalPricePerKg = weight ? Math.round(totalPrice / weight) : 0;
+
+    // Selling side
+    const soldPrice = toNum(a.soldPrice);
+    const soldCost = toNum(a.soldCost);
+    const totalInvestment = totalPrice + soldCost; // full money sunk into the animal incl. selling cost
+    const sellingPricePerKg = weight ? Math.round(soldPrice / weight) : 0;
+    const profitLoss = soldPrice - totalInvestment; // matches the Sell page profit calculation
+
+    return {
+      buyingWeight, weight, purchasePrice, purchaseExpenses, operationalCost,
+      totalPrice, purchasePricePerKg, totalPricePerKg,
+      soldPrice, soldCost, totalInvestment, sellingPricePerKg, profitLoss
+    };
+  };
+
+  // Plain export (default): unchanged column set.
+  const buildBasicAnimalsSheet = (wb, animals) => {
+    const headers = ['Tag ID', 'Name', 'Pen', 'Sex', 'Breed', 'Purchase Price', 'Buying Weight (kg)', 'Current Weight (kg)', 'Status', 'Added Date'];
+    const sheet = wb.addWorksheet('Animals');
+    sheet.columns = headers.map(() => ({ width: 18 }));
+    sheet.addRow(headers);
+    for (const a of animals) {
+      sheet.addRow([
+        a.tagId || '',
+        a.name || '',
+        getAnimalPenName(a),
+        a.sex || '',
+        a.breedType || '',
+        a.purchasePrice != null ? Number(a.purchasePrice) : '',
+        a.buyingWeight != null ? Number(a.buyingWeight) : '',
+        a.weight != null ? Number(a.weight) : '',
+        a.status || '',
+        a.createdAt ? new Date(a.createdAt).toLocaleDateString() : ''
+      ]);
+    }
+  };
+
+  // Enriched export for the Sold filter: full cost-and-profit breakdown per animal + totals row.
+  const buildSoldAnimalsSheet = (wb, animals) => {
+    const sheet = wb.addWorksheet('Sold Animals');
+    const money = '#,##0';
+    const PROFIT_GREEN = 'FF008000';
+    const LOSS_RED = 'FFC00000';
+
+    sheet.columns = [
+      { header: 'Tag ID', key: 'tagId', width: 14 },
+      { header: 'Name', key: 'name', width: 16 },
+      { header: 'Pen', key: 'pen', width: 14 },
+      { header: 'Sex', key: 'sex', width: 8 },
+      { header: 'Breed', key: 'breed', width: 14 },
+      { header: 'Buying Weight (kg)', key: 'buyingWeight', width: 16 },
+      { header: 'Current Weight (kg)', key: 'weight', width: 16 },
+      { header: 'Purchase Price', key: 'purchasePrice', width: 16, style: { numFmt: money } },
+      { header: 'Purchase Price/Kg', key: 'purchasePricePerKg', width: 16, style: { numFmt: money } },
+      { header: 'Purchase Expenses', key: 'purchaseExpenses', width: 16, style: { numFmt: money } },
+      { header: 'Cost (Feed/Health/etc.)', key: 'operationalCost', width: 20, style: { numFmt: money } },
+      { header: 'Total Price', key: 'totalPrice', width: 16, style: { numFmt: money } },
+      { header: 'Total Price/Kg', key: 'totalPricePerKg', width: 16, style: { numFmt: money } },
+      { header: 'Sold Date', key: 'soldDate', width: 14 },
+      { header: 'Selling Price', key: 'soldPrice', width: 16, style: { numFmt: money } },
+      { header: 'Selling Cost', key: 'soldCost', width: 14, style: { numFmt: money } },
+      { header: 'Selling Price/Kg', key: 'sellingPricePerKg', width: 16, style: { numFmt: money } },
+      { header: 'Total Investment', key: 'totalInvestment', width: 16, style: { numFmt: money } },
+      { header: 'Profit / Loss', key: 'profitLoss', width: 16, style: { numFmt: money } },
+      { header: 'Status', key: 'status', width: 12 },
+      { header: 'Added Date', key: 'addedDate', width: 14 }
+    ];
+    sheet.getRow(1).font = { bold: true };
+
+    let sumPurchase = 0, sumInvestment = 0, sumSelling = 0, sumProfit = 0;
+
+    for (const a of animals) {
+      const b = computeAnimalBreakdown(a);
+      sumPurchase += b.purchasePrice;
+      sumInvestment += b.totalInvestment;
+      sumSelling += b.soldPrice;
+      sumProfit += b.profitLoss;
+
+      const row = sheet.addRow({
+        tagId: a.tagId || '',
+        name: a.name || '',
+        pen: getAnimalPenName(a),
+        sex: a.sex || '',
+        breed: a.breedType || '',
+        buyingWeight: b.buyingWeight || '',
+        weight: b.weight || '',
+        purchasePrice: b.purchasePrice,
+        purchasePricePerKg: b.purchasePricePerKg,
+        purchaseExpenses: b.purchaseExpenses,
+        operationalCost: b.operationalCost,
+        totalPrice: b.totalPrice,
+        totalPricePerKg: b.totalPricePerKg,
+        soldDate: a.soldDate ? new Date(a.soldDate).toLocaleDateString() : '',
+        soldPrice: b.soldPrice,
+        soldCost: b.soldCost,
+        sellingPricePerKg: b.sellingPricePerKg,
+        totalInvestment: b.totalInvestment,
+        profitLoss: b.profitLoss,
+        status: a.status || '',
+        addedDate: a.createdAt ? new Date(a.createdAt).toLocaleDateString() : ''
+      });
+      // Colour profit green / loss red so the client can scan results at a glance
+      row.getCell('profitLoss').font = { color: { argb: b.profitLoss < 0 ? LOSS_RED : PROFIT_GREEN } };
+    }
+
+    // Blank spacer + bold totals row summarising the whole sold set
+    sheet.addRow({});
+    const totalRow = sheet.addRow({
+      name: 'TOTAL',
+      purchasePrice: sumPurchase,
+      totalInvestment: sumInvestment,
+      soldPrice: sumSelling,
+      profitLoss: sumProfit
+    });
+    totalRow.font = { bold: true };
+    totalRow.getCell('profitLoss').font = { bold: true, color: { argb: sumProfit < 0 ? LOSS_RED : PROFIT_GREEN } };
   };
 
   const getAnimalPenId = (animal) => {
@@ -482,7 +615,7 @@ const AnimalList = () => {
             ) : (
               filteredAnimals.map((animal) => {
                 const daysOnFarm = calculateDaysSince(animal.createdAt);
-                const overAge = daysOnFarm != null && daysOnFarm >= OVER_AGE_DAYS;
+                const overAge = daysOnFarm != null && daysOnFarm >= OVER_AGE_DAYS && animal.status === 'Active';
                 return (
                 <TableRow
                   key={getId(animal)}
