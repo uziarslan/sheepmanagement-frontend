@@ -730,9 +730,31 @@ const BulkUpload = () => {
       return;
     }
 
-    const expensesTotal = getPurchaseExpensesTotal();
-    const totalWithExpenses = parseFloat(totalAmount) + expensesTotal;
-    const animalsWithPrice = calculatePricePerAnimal(animalsToUpload, String(totalWithExpenses));
+    // Purchase price is allocated by weight from the animals-only total.
+    // Purchasing expenses are a BATCH cost, split EQUALLY across animals below
+    // (each animal carries only its share, not the full batch amount).
+    const animalsWithPrice = calculatePricePerAnimal(animalsToUpload, String(parseFloat(totalAmount)));
+
+    // Split each batch expense equally across animals. Rounding remainder (if the
+    // amount doesn't divide evenly) is added to the first animal so the per-field
+    // shares sum back to exactly what was entered.
+    const animalCount = animalsWithPrice.length;
+    const splitEqually = (value) => {
+      const amt = parseFloat(value) || 0;
+      if (animalCount === 0 || amt === 0) return new Array(animalCount).fill(0);
+      const per = Math.round((amt / animalCount) * 100) / 100;
+      const shares = new Array(animalCount).fill(per);
+      const diff = Math.round((amt - per * animalCount) * 100) / 100;
+      if (diff !== 0) shares[0] = Math.round((shares[0] + diff) * 100) / 100;
+      return shares;
+    };
+    const expenseShares = {
+      purchaseTransport: splitEqually(purchaseTransport),
+      purchaseMandiExpenses: splitEqually(purchaseMandiExpenses),
+      purchaseFuel: splitEqually(purchaseFuel),
+      purchaseFood: splitEqually(purchaseFood),
+      purchaseHotel: splitEqually(purchaseHotel)
+    };
 
     setUploading(true);
     setUploadErrors([]);
@@ -748,7 +770,7 @@ const BulkUpload = () => {
     ];
 
     // Prepare all animals with proper payload structure
-    const animalsPayload = animalsWithPrice.map(animal => {
+    const animalsPayload = animalsWithPrice.map((animal, i) => {
       const { rowIndex, isValid, errors: rowErrors, penId, ...rest } = animal;
       // Only send allowed fields to avoid backend validation errors
       const payload = {};
@@ -757,12 +779,8 @@ const BulkUpload = () => {
           const pen = penId || rest.pen;
           if (pen !== undefined) payload[key] = pen;
         } else if (key.startsWith('purchase') && key !== 'purchasePrice' && key !== 'purchasedFrom') {
-          // Add all expense fields from state
-          if (key === 'purchaseTransport') payload[key] = parseFloat(purchaseTransport) || 0;
-          else if (key === 'purchaseMandiExpenses') payload[key] = parseFloat(purchaseMandiExpenses) || 0;
-          else if (key === 'purchaseFuel') payload[key] = parseFloat(purchaseFuel) || 0;
-          else if (key === 'purchaseFood') payload[key] = parseFloat(purchaseFood) || 0;
-          else if (key === 'purchaseHotel') payload[key] = parseFloat(purchaseHotel) || 0;
+          // Each animal carries its equal share of the batch expense, not the full amount.
+          payload[key] = expenseShares[key] ? (expenseShares[key][i] || 0) : 0;
         } else if (rest[key] !== undefined) {
           payload[key] = rest[key];
         }
@@ -1182,7 +1200,7 @@ const BulkUpload = () => {
                 Total Amount & Purchasing Expenses for {animalsToUpload.length} Animal{animalsToUpload.length !== 1 ? 's' : ''}
               </h3>
               <p className="text-sm text-gray-600 mb-4">
-                Enter the total (collective) amount you paid for all these animals, then any purchasing expenses. The combined total will be allocated by buying weight (same per kg cost for each animal).
+                Enter the total (collective) amount you paid for all these animals, then any purchasing expenses. The animal amount is allocated by buying weight (same per kg cost for each animal). Expenses are a batch cost and are split equally across all animals.
               </p>
 
               <div className="mb-4">
@@ -1262,13 +1280,16 @@ const BulkUpload = () => {
               </div>
 
               {animalsToUpload.length > 0 && totalAmount && parseFloat(totalAmount) > 0 && (() => {
+                const animalTotal = parseFloat(totalAmount);
                 const expensesTotal = getPurchaseExpensesTotal();
-                const totalWithExpenses = parseFloat(totalAmount) + expensesTotal;
+                const totalWithExpenses = animalTotal + expensesTotal;
+                const count = animalsToUpload.length;
                 const totalW = animalsToUpload.reduce((s, a) => s + (parseFloat(a.buyingWeight) || parseFloat(a.weight) || 0), 0);
-                const perKg = totalW > 0 ? totalWithExpenses / totalW : 0;
+                const perKg = totalW > 0 ? animalTotal / totalW : 0;
                 const sample = animalsToUpload[0];
                 const sampleW = parseFloat(sample?.buyingWeight) || parseFloat(sample?.weight) || 0;
-                const samplePrice = totalW > 0 ? (perKg * sampleW).toFixed(2) : (totalWithExpenses / animalsToUpload.length).toFixed(2);
+                const sampleAnimalPrice = totalW > 0 ? (perKg * sampleW) : (animalTotal / count);
+                const expensePerAnimal = count > 0 ? expensesTotal / count : 0;
                 return (
                   <div className="mb-6 p-3 bg-blue-50 rounded-lg border border-blue-200">
                     {expensesTotal > 0 && (
@@ -1276,12 +1297,18 @@ const BulkUpload = () => {
                         Total cost (animals + expenses): Rs. {totalWithExpenses.toLocaleString()}
                       </p>
                     )}
-                    <p className="text-xs text-blue-800 font-medium mb-2">Allocation by weight (auto-calculated):</p>
+                    <p className="text-xs text-blue-800 font-medium mb-2">Per-animal breakdown (auto-calculated):</p>
                     <p className="text-sm text-blue-700 font-semibold">
-                      Rs. {perKg.toFixed(2)} per kg
+                      Animals: Rs. {perKg.toFixed(2)} per kg
                     </p>
+                    {expensesTotal > 0 && (
+                      <p className="text-sm text-blue-700 font-semibold">
+                        Expenses: Rs. {expensePerAnimal.toFixed(2)} per animal (split equally)
+                      </p>
+                    )}
                     <p className="text-xs text-blue-600 mt-1">
-                      Example: {sampleW} kg → Rs. {samplePrice}
+                      Example: {sampleW} kg → animal Rs. {sampleAnimalPrice.toFixed(2)}
+                      {expensesTotal > 0 ? ` + expenses Rs. ${expensePerAnimal.toFixed(2)} = Rs. ${(sampleAnimalPrice + expensePerAnimal).toFixed(2)}` : ''}
                     </p>
                   </div>
                 );
