@@ -78,7 +78,7 @@ const LoadingSpinner = () => (
     </div>
   </div>
 );
-
+ 
 
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
