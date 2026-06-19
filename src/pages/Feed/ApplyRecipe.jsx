@@ -9,7 +9,7 @@ import {
   HiOutlineCalendar
 } from 'react-icons/hi';
 import { GiSheep } from 'react-icons/gi';
-import { feedAPI, penAPI } from '../../services/api';
+import { feedAPI, penAPI, stockAPI } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
   PageHeader,
@@ -29,6 +29,7 @@ const ApplyRecipe = () => {
 
   const [recipes, setRecipes] = useState([]);
   const [pens, setPens] = useState([]);
+  const [feedStocks, setFeedStocks] = useState([]);
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
@@ -74,15 +75,21 @@ const ApplyRecipe = () => {
 
   const fetchData = async () => {
     try {
-      const [recipesRes, pensRes, applicationsRes] = await Promise.all([
+      const [recipesRes, pensRes, applicationsRes, stocksRes] = await Promise.all([
         feedAPI.getAllRecipes(),
         penAPI.getAll({ limit: 100 }),
-        feedAPI.getApplications()
+        feedAPI.getApplications(),
+        // Live feed stock across ALL lots — the recipe's stored ingredient
+        // .currentStock is a single-lot snapshot taken at creation time and
+        // goes stale as stock is bought/consumed. getByCategory returns every
+        // active lot unpaginated so we can aggregate true availability.
+        stockAPI.getByCategory('Feeding')
       ]);
 
       if (recipesRes.success) setRecipes(recipesRes.data);
       if (pensRes.success) setPens(pensRes.data);
       if (applicationsRes.success) setApplications(applicationsRes.data);
+      if (stocksRes.success) setFeedStocks(stocksRes.data);
     } catch (error) {
       toast.error('Failed to fetch data');
     } finally {
@@ -127,6 +134,28 @@ const ApplyRecipe = () => {
     return { selectedPens: picked, totalAnimals: total };
   }, [pens, formData.penIds]);
 
+  // True on-hand quantity per product, summed across every lot. Keyed by
+  // lowercased productName — mirrors the backend's apply-time aggregation
+  // (feed.service: match by productName + category, sum currentQty). This is
+  // what we validate against, NOT the recipe's stale per-lot snapshot.
+  const stockAvailableByName = useMemo(() => {
+    const map = new Map();
+    feedStocks.forEach((s) => {
+      const key = (s.productName || '').trim().toLowerCase();
+      if (!key) return;
+      map.set(key, (map.get(key) || 0) + (Number(s.currentQty) || 0));
+    });
+    return map;
+  }, [feedStocks]);
+
+  // Available stock for a recipe ingredient. Prefer the live aggregated total;
+  // fall back to the stored snapshot if the product isn't in the live list.
+  const getAvailableStock = (ing) => {
+    const key = (ing?.name || '').trim().toLowerCase();
+    if (stockAvailableByName.has(key)) return stockAvailableByName.get(key);
+    return Number(ing?.currentStock) || 0;
+  };
+
   const dayCount = useMemo(() => {
     if (formData.applyMode !== 'range') return 1;
     if (!formData.dateStart || !formData.dateEnd) return 1;
@@ -159,10 +188,11 @@ const ApplyRecipe = () => {
     }
 
     // Stock availability: need ing.quantity × totalAnimals × dayCount across
-    // ALL selected pens.
+    // ALL selected pens. Checked against live aggregated stock (all lots), not
+    // the recipe's per-lot snapshot.
     if (selectedRecipe && totalAnimals > 0) {
       const insufficientStock = selectedRecipe.ingredients.filter(
-        ing => (ing.quantity * totalAnimals * dayCount) > (ing.currentStock || 0)
+        ing => (ing.quantity * totalAnimals * dayCount) > getAvailableStock(ing)
       );
       if (insufficientStock.length > 0) {
         newErrors.stock =
@@ -500,7 +530,8 @@ const ApplyRecipe = () => {
                   {selectedRecipe.ingredients.map((ing, i) => {
                     const needQty = ing.quantity * totalAnimals * dayCount;
                     const lineCost = ing.total * totalAnimals * dayCount;
-                    const hasStock = (ing.currentStock || 0) >= needQty;
+                    const availableQty = getAvailableStock(ing);
+                    const hasStock = availableQty >= needQty;
                     return (
                       <div key={i} className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-2">
@@ -516,7 +547,9 @@ const ApplyRecipe = () => {
                             {formatCurrency(lineCost)}
                           </span>
                           {!hasStock && (
-                            <Badge variant="danger" className="text-xs">Low Stock</Badge>
+                            <Badge variant="danger" className="text-xs">
+                              Low Stock ({availableQty} {ing.unit})
+                            </Badge>
                           )}
                         </div>
                       </div>

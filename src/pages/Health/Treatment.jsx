@@ -37,8 +37,6 @@ import { diagnosisTypes, treatmentTypes } from '../../data/mockData';
 const Treatment = () => {
   const [treatments, setTreatments] = useState([]);
   const [animals, setAnimals] = useState([]);
-  const [animalSearch, setAnimalSearch] = useState('');
-  const [searchedAnimals, setSearchedAnimals] = useState([]);
   const [animalSearchLoading, setAnimalSearchLoading] = useState(false);
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -85,46 +83,18 @@ const Treatment = () => {
     fetchData();
   }, []);
 
-  useEffect(() => {
-    const q = animalSearch.trim();
-    if (!q) {
-      setSearchedAnimals([]);
-      setAnimalSearchLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    const run = async () => {
-      setAnimalSearchLoading(true);
-      try {
-        const res = await animalAPI.getAll({ limit: 100, sort: 'tagId', search: q });
-        if (cancelled) return;
-        if (res.success) {
-          const list = Array.isArray(res.data) ? res.data : [];
-          setSearchedAnimals(list.filter(a => a.status === 'Active'));
-        } else {
-          setSearchedAnimals([]);
-        }
-      } catch (e) {
-        if (!cancelled) setSearchedAnimals([]);
-      } finally {
-        if (!cancelled) setAnimalSearchLoading(false);
-      }
-    };
-    run();
-
-    return () => { cancelled = true; };
-  }, [animalSearch]);
+  // Pen rosters run into the hundreds; the backend default limit is 10 and it
+  // caps at 5000. Pull every active animal so the dropdown isn't a random slice.
+  const ANIMAL_FETCH_LIMIT = 5000;
 
   const fetchData = async () => {
     try {
       const [animalsRes, stocksRes, treatmentsRes] = await Promise.all([
-        // Backend caps limit at 100; default is 10 which feels "random" in dropdowns.
-        animalAPI.getAll({ limit: 100, sort: 'tagId' }),
+        animalAPI.getAll({ status: 'Active', limit: ANIMAL_FETCH_LIMIT, sort: 'tagId' }),
         stockAPI.getAll({ category: 'Medication', limit: 100 }),
         healthAPI.getTreatments()
       ]);
-      
+
       if (animalsRes.success) setAnimals(animalsRes.data.filter(a => a.status === 'Active'));
       if (stocksRes.success) {
         const meds = stocksRes.data.filter(s => s.category === 'Medication');
@@ -142,6 +112,39 @@ const Treatment = () => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
+  };
+
+  // SearchableSelect calls onChange with the raw value (not an event).
+  const setField = (name, value) => {
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
+  };
+
+  // Server-side search for the animal dropdown so it stays usable when the
+  // roster exceeds the page size. Merges results into `animals` (keeping the
+  // current selection) the same way the medicine/vaccine pickers do.
+  const searchAnimals = async (term) => {
+    try {
+      setAnimalSearchLoading(true);
+      const params = { status: 'Active', limit: ANIMAL_FETCH_LIMIT, sort: 'tagId' };
+      if (term) params.search = term;
+      const res = await animalAPI.getAll(params);
+      if (res.success) {
+        setAnimals((prev) => {
+          const byId = new Map();
+          const sel = prev.find(a => String(getId(a)) === String(formData.animalId));
+          if (sel) byId.set(String(getId(sel)), sel);
+          (res.data || [])
+            .filter(a => a.status === 'Active')
+            .forEach(a => byId.set(String(getId(a)), a));
+          return Array.from(byId.values());
+        });
+      }
+    } catch (_) {
+      // Silent — typeahead failures shouldn't surface as toasts.
+    } finally {
+      setAnimalSearchLoading(false);
+    }
   };
 
   // Wraps the medicine-id change from the searchable dropdown so the same
@@ -323,8 +326,6 @@ const Treatment = () => {
   };
 
   const openModal = (treatment = null) => {
-    setAnimalSearch('');
-    setSearchedAnimals([]);
     setAnimalSearchLoading(false);
     if (treatment) {
       setIsEdit(true);
@@ -366,8 +367,6 @@ const Treatment = () => {
     setModalOpen(false);
     setIsEdit(false);
     setEditId(null);
-    setAnimalSearch('');
-    setSearchedAnimals([]);
     setAnimalSearchLoading(false);
     setFormData({
       date: new Date().toISOString().split('T')[0],
@@ -404,8 +403,7 @@ const Treatment = () => {
 
   const totalMedicineAmount = formData.medicines.reduce((sum, m) => sum + m.total, 0);
 
-  const animalOptionsSource = animalSearch.trim() ? searchedAnimals : animals;
-  const animalOptions = animalOptionsSource
+  const animalOptions = animals
     .filter(a => a.status === 'Active')
     .sort((a, b) => String(a.tagId || '').localeCompare(String(b.tagId || '')))
     .map(a => ({ value: getId(a), label: `${a.tagId} - ${a.name || ''}`.trim() }));
@@ -591,23 +589,19 @@ const Treatment = () => {
               error={errors.date}
               required
             />
-            <div className="space-y-2">
-              <SearchInput
-                value={animalSearch}
-                onChange={setAnimalSearch}
-                placeholder={animalSearchLoading ? 'Searching…' : 'Search Tag ID / name / EID...'}
-              />
-              <Select
-                label="Animal (Tag ID)"
-                name="animalId"
-                value={formData.animalId}
-                onChange={handleChange}
-                options={animalOptions}
-                placeholder={animalOptions.length === 0 ? 'No matching animals' : 'Select animal'}
-                error={errors.animalId}
-                required
-              />
-            </div>
+            <SearchableSelect
+              label="Animal (Tag ID)"
+              value={formData.animalId}
+              onChange={(value) => setField('animalId', value)}
+              onSearch={searchAnimals}
+              loading={animalSearchLoading}
+              options={animalOptions}
+              placeholder="Select animal"
+              searchPlaceholder="Search Tag ID / name / EID..."
+              noOptionsText="No matching animals"
+              error={errors.animalId}
+              required
+            />
           </div>
 
           <Textarea
