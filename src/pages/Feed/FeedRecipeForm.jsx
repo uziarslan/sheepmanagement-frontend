@@ -56,7 +56,7 @@ const FeedRecipeForm = () => {
     try {
       const [pensRes, stocksRes] = await Promise.all([
         penAPI.getAll({ limit: 100 }),
-        stockAPI.getAll({ category: 'Feeding', limit: 1000 })
+        stockAPI.getAll({ category: 'Feeding', limit: 100 })
       ]);
       
       if (pensRes.success) setPens(pensRes.data);
