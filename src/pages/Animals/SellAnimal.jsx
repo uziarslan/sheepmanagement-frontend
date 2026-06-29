@@ -358,6 +358,9 @@ const SellAnimal = () => {
     // Allocate by weight: per kg same for all, each animal = per kg × weight
     const allocations = hasTotalSellingPrice ? allocateTotalSellingPriceByWeight(baseTotal, validRows) : [];
     let allocationIdx = 0;
+    // Selling cost is split equally across animals; subtract each row's share
+    // from its profit so the per-row profits sum to the displayed total (audit M-7).
+    const sellingCostPerRow = count > 0 ? sellingCost / count : 0;
 
     const rows = bulkPreview.map(row => {
       if (row.status !== 'valid') {
@@ -388,7 +391,7 @@ const SellAnimal = () => {
       // Sale values - allocation of base selling price only (selling cost is our expense)
       const salePrice = hasTotalSellingPrice ? (allocations[allocationIdx++] ?? 0) : 0;
       const salePricePerKg = weight > 0 ? salePrice / weight : 0;
-      const profit = hasTotalSellingPrice ? salePrice - totalCost : null;
+      const profit = hasTotalSellingPrice ? salePrice - totalCost - sellingCostPerRow : null;
 
       return {
         ...row,
