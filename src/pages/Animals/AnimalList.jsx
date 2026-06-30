@@ -675,7 +675,7 @@ const AnimalList = () => {
                   <TableCell>
                     <span className="font-medium text-emerald-600">
                       {animal.buyingWeight > 0
-                        ? formatCurrency(animal.purchasePrice / animal.buyingWeight)
+                        ? formatCurrency(animal.pricePerKg)
                         : '-'
                       }
                     </span>
@@ -695,8 +695,8 @@ const AnimalList = () => {
                   </TableCell>
                   <TableCell>
                     <span className="font-medium text-blue-600">
-                      {animal.weight > 0 
-                        ? formatCurrency((animal.totalPrice ?? (animal.purchasePrice || 0) + (animal.cost || 0)) / animal.weight) 
+                      {animal.weight > 0
+                        ? formatCurrency(animal.totalPricePerKg)
                         : '-'
                       }
                     </span>

@@ -73,7 +73,9 @@ const DeclareAnimalDead = () => {
 
   const fetchActiveAnimals = async () => {
     try {
-      const response = await animalAPI.getAll({ status: 'Active' });
+      // Load a meaningful page (not the default 10) so the browse list shows the
+      // herd; search uses its own server-side query for anything beyond this.
+      const response = await animalAPI.getAll({ status: 'Active', limit: 100, sort: 'tagId' });
       if (response.success) {
         setAnimals(response.data);
       }
@@ -132,7 +134,7 @@ const DeclareAnimalDead = () => {
     <div className="space-y-6">
       <PageHeader
         title="Declare Animal Dead"
-        subtitle="Mark an animal as deceased and distribute its cost among remaining animals"
+        subtitle="Mark an animal as deceased; its total cost is recorded as a capital loss"
         breadcrumbs={[
           { label: 'Animals', path: '/dashboard/animals' },
           { label: 'Declare Dead' }
