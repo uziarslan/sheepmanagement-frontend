@@ -147,17 +147,17 @@ const PenList = () => {
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
                       className={`h-2 rounded-full transition-all ${
-                        (pen.animalCount / pen.capacity) > 0.8
+                        (pen.capacity > 0 ? pen.animalCount / pen.capacity : 0) > 0.8
                           ? 'bg-red-500'
-                          : (pen.animalCount / pen.capacity) > 0.5
+                          : (pen.capacity > 0 ? pen.animalCount / pen.capacity : 0) > 0.5
                           ? 'bg-yellow-500'
                           : 'bg-emerald-500'
                       }`}
-                      style={{ width: `${Math.min((pen.animalCount / pen.capacity) * 100, 100)}%` }}
+                      style={{ width: `${Math.min((pen.capacity > 0 ? pen.animalCount / pen.capacity : 0) * 100, 100)}%` }}
                     />
                   </div>
                   <p className="text-xs text-gray-500 mt-1 text-right">
-                    {((pen.animalCount / pen.capacity) * 100).toFixed(0)}% capacity
+                    {((pen.capacity > 0 ? pen.animalCount / pen.capacity : 0) * 100).toFixed(0)}% capacity
                   </p>
                 </div>
 

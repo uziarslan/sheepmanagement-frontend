@@ -34,6 +34,9 @@ const EmployeeAdvance = () => {
   const navigate = useNavigate();
   const [employees, setEmployees] = useState([]);
   const [advances, setAdvances] = useState([]);
+  // Server-side aggregate totals (Given/Returned across ALL advances, not just the
+  // loaded page) — mirrors Liability.jsx's use of getSummary for headline totals.
+  const [advanceSummary, setAdvanceSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   
@@ -59,16 +62,34 @@ const EmployeeAdvance = () => {
 
   const fetchData = async () => {
     try {
-      const [employeesRes, advancesRes] = await Promise.all([
-        employeeAPI.getAll(),
-        advanceAPI.getAll()
+      // High limits so the Employee Balances panel and the transaction table are
+      // not silently capped at the default page size (default was 10, which made
+      // the balances list and the Outstanding/Employees-with-Advances cards wrong
+      // once there were >10 rows). The headline Given/Returned money totals come
+      // from the server-side getSummary aggregate, which has no page cap at all.
+      const [employeesRes, advancesRes, summaryRes] = await Promise.all([
+        employeeAPI.getAll({ limit: 1000 }),
+        advanceAPI.getAll({ limit: 1000 }),
+        advanceAPI.getSummary()
       ]);
       if (employeesRes.success) setEmployees(employeesRes.data);
       if (advancesRes.success) setAdvances(advancesRes.data);
+      if (summaryRes.success) setAdvanceSummary(summaryRes.data);
     } catch (error) {
       toast.error('Failed to fetch data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Refresh just the server-side totals after a give/return so the Given/Returned
+  // cards reflect the new transaction without a full reload.
+  const refreshAdvanceSummary = async () => {
+    try {
+      const res = await advanceAPI.getSummary();
+      if (res.success) setAdvanceSummary(res.data);
+    } catch (_) {
+      /* non-fatal: cards fall back to the loaded-page computation */
     }
   };
 
@@ -153,15 +174,19 @@ const EmployeeAdvance = () => {
           if (String(emp._id || emp.id) === String(employeeIdKey)) {
             const newBalance = modalType === 'give'
               ? (emp.advanceBalance || 0) + advanceData.amount
-              : (emp.advanceBalance || 0) - advanceData.amount;
+              // Floor at 0 — the server (atomic $gte deduction) can never push a
+              // balance negative, so the local optimistic value shouldn't either.
+              : Math.max(0, (emp.advanceBalance || 0) - advanceData.amount);
             return { ...emp, advanceBalance: newBalance };
           }
           return emp;
         }));
-        
+
         // Add to advances list
         setAdvances(prev => [response.data, ...prev]);
-        
+        // Keep the server-side Given/Returned totals current.
+        refreshAdvanceSummary();
+
         closeModal();
       }
     } catch (error) {
@@ -176,18 +201,29 @@ const EmployeeAdvance = () => {
     return employees.find(e => String(e._id || e.id) === String(id));
   };
 
-  // Calculate totals
-  const totalAdvanceGiven = advances
-    .filter(a => a.type === 'Given')
-    .reduce((sum, a) => sum + a.amount, 0);
-  const totalAdvanceReturned = advances
-    .filter(a => a.type === 'Returned')
-    .reduce((sum, a) => sum + a.amount, 0);
+  // Calculate totals. Prefer the server-side aggregate (covers ALL advances);
+  // fall back to summing the loaded page only if the summary hasn't loaded.
+  const summaryGiven = advanceSummary?.transactions?.find(t => t._id === 'Given')?.total;
+  const summaryReturned = advanceSummary?.transactions?.find(t => t._id === 'Returned')?.total;
+  const totalAdvanceGiven = summaryGiven != null
+    ? summaryGiven
+    : advances.filter(a => a.type === 'Given').reduce((sum, a) => sum + a.amount, 0);
+  const totalAdvanceReturned = summaryReturned != null
+    ? summaryReturned
+    : advances.filter(a => a.type === 'Returned').reduce((sum, a) => sum + a.amount, 0);
+  // Outstanding + the employee count card come from the (now fully-loaded)
+  // employees list so they stay responsive to optimistic balance updates.
   const currentOutstanding = employees.reduce((sum, e) => sum + (e.advanceBalance || 0), 0);
 
-  // Filter advances for selected employee
-  const filteredAdvances = selectedEmployee 
-    ? advances.filter(a => a.employeeId === selectedEmployee.id)
+  // Filter advances for selected employee. Advance records carry the relation as
+  // `employee` (populated object or id), not `employeeId`, and employees are keyed
+  // by `_id` — matching the renderer at the bottom of this file. Comparing the
+  // old `a.employeeId === selectedEmployee.id` left both sides undefined.
+  const filteredAdvances = selectedEmployee
+    ? advances.filter(a =>
+        String(a.employee?._id || a.employee?.id || a.employee || a.employeeId) ===
+        String(selectedEmployee._id || selectedEmployee.id)
+      )
     : advances;
 
   if (loading) {
