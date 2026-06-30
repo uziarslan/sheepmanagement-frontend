@@ -247,27 +247,42 @@ const MoveToPen = () => {
 
     setMoving(true);
     try {
-      // Move all selected animals
-      const movePromises = selectedAnimals.map(animal => 
-        animalAPI.update(getId(animal), { pen: penId })
+      // Move each selected animal. Use allSettled so one failure doesn't abort
+      // the rest and leave a partial, unreported move (audit M-8).
+      const settled = await Promise.allSettled(
+        selectedAnimals.map(animal => animalAPI.update(getId(animal), { pen: penId }))
       );
-      await Promise.all(movePromises);
 
-      toast.success(`${selectedAnimals.length} animal(s) moved to ${selectedPen.name}!`);
-      
-      // Update local state
-      const movedIds = new Set(selectedAnimals.map(a => getId(a)));
-      setAnimals(prev => prev.map(a => 
+      const movedIds = new Set();
+      const failed = [];
+      settled.forEach((res, i) => {
+        const animal = selectedAnimals[i];
+        if (res.status === 'fulfilled') {
+          movedIds.add(getId(animal));
+        } else {
+          failed.push(animal?.tagId || getId(animal));
+        }
+      });
+
+      if (movedIds.size > 0) {
+        toast.success(`${movedIds.size} animal(s) moved to ${selectedPen.name}!`);
+      }
+      if (failed.length > 0) {
+        toast.error(`Failed to move ${failed.length}: ${failed.slice(0, 5).join(', ')}${failed.length > 5 ? '…' : ''}`);
+      }
+
+      // Update local state only for the animals that actually moved.
+      setAnimals(prev => prev.map(a =>
         movedIds.has(getId(a)) ? { ...a, pen: penId, penId } : a
       ));
-      
+
       // Refetch pens so Total Capacity, Available Spots and per-pen counts reflect actual DB
       const pensRes = await penAPI.getAll({ limit: 100 });
       if (pensRes.success) setPens(pensRes.data);
-      
-      // Reset selections
-      setSelectedAnimals([]);
-      setSelectedPen(null);
+
+      // Keep only the still-unmoved (failed) animals selected so the user can retry.
+      setSelectedAnimals(prev => prev.filter(a => !movedIds.has(getId(a))));
+      if (failed.length === 0) setSelectedPen(null);
     } catch (error) {
       toast.error('Failed to move animals');
     } finally {
@@ -275,9 +290,12 @@ const MoveToPen = () => {
     }
   };
 
-  // Use DB values: capacity and animalCount come from backend aggregation
-  const getPenCapacity = (pen) => Number(pen?.capacity) || 0;
-  const getPenAnimalCount = (pen) => Number(pen?.animalCount) ?? 0;
+  // Use DB values: capacity and animalCount come from backend aggregation.
+  // Guard against NaN — `Number(undefined) ?? 0` is NaN (?? only catches
+  // null/undefined, not NaN), which silently broke capacity math (audit M-8).
+  const safeNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  const getPenCapacity = (pen) => safeNum(pen?.capacity);
+  const getPenAnimalCount = (pen) => safeNum(pen?.animalCount);
   const getPenSpotsAvailable = (pen) => Math.max(0, getPenCapacity(pen) - getPenAnimalCount(pen));
 
   const getPenStatusColor = (pen) => {
