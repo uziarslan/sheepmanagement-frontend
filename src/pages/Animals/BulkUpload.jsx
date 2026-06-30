@@ -69,9 +69,6 @@ const BulkUpload = () => {
 
       try {
         const pensRes = await penAPI.getAll({ limit: 100 });
-        if (typeof console !== 'undefined' && console.log) {
-          console.log('Pens API response:', pensRes);
-        }
         if (pensRes.success && pensRes.data) {
           pensData = Array.isArray(pensRes.data) ? pensRes.data : [];
         } else if (Array.isArray(pensRes)) {
@@ -79,9 +76,6 @@ const BulkUpload = () => {
           pensData = pensRes;
         } else if (pensRes && pensRes.data && Array.isArray(pensRes.data)) {
           pensData = pensRes.data;
-        }
-        if (typeof console !== 'undefined' && console.log) {
-          console.log('Parsed pens data:', pensData);
         }
       } catch (penError) {
         if (typeof console !== 'undefined' && console.error) {

@@ -153,6 +153,9 @@ const AnimalForm = () => {
     if (!formData.breedType) {
       newErrors.breedType = 'Breed type is required';
     }
+    if (!formData.subcategory) {
+      newErrors.subcategory = 'Subcategory is required';
+    }
     if (!formData.sex) {
       newErrors.sex = 'Sex is required';
     }
@@ -186,7 +189,7 @@ const AnimalForm = () => {
 
     setSubmitting(true);
     try {
-      // Only send fields the backend accepts (pen not penId, no picture)
+      // Only send fields the backend accepts (pen not penId, no picture).
       const penValue = formData.penId ? String(formData.penId).trim() : null;
       const dataToSubmit = {
         tagId: formData.tagId?.trim() || undefined,
@@ -199,7 +202,6 @@ const AnimalForm = () => {
         purchasedFrom: formData.purchasedFrom || 'Pakistan',
         arrivalDate: formData.arrivalDate,
         birthDate: formData.birthDate || null,
-        purchasePrice: parseFloat(formData.purchasePrice),
         weight: parseFloat(formData.weight),
         weightDate: formData.weightDate || undefined,
         pen: penValue || null,
@@ -213,12 +215,18 @@ const AnimalForm = () => {
         dataToSubmit.buyingWeight = parseFloat(formData.buyingWeight);
       }
 
-      // Purchasing expenses (optional; send 0 when empty so update can clear them)
-      dataToSubmit.purchaseTransport = Number(formData.purchaseTransport) || 0;
-      dataToSubmit.purchaseMandiExpenses = Number(formData.purchaseMandiExpenses) || 0;
-      dataToSubmit.purchaseFuel = Number(formData.purchaseFuel) || 0;
-      dataToSubmit.purchaseFood = Number(formData.purchaseFood) || 0;
-      dataToSubmit.purchaseHotel = Number(formData.purchaseHotel) || 0;
+      // Purchase price + purchasing expenses are ONLY accepted on CREATE. The
+      // update endpoint rejects them (changing a purchase cost needs a synced
+      // capital adjustment, which isn't supported), and sending them on edit
+      // used to make every update fail with a 400 (audit C-4).
+      if (!isEdit) {
+        dataToSubmit.purchasePrice = parseFloat(formData.purchasePrice);
+        dataToSubmit.purchaseTransport = Number(formData.purchaseTransport) || 0;
+        dataToSubmit.purchaseMandiExpenses = Number(formData.purchaseMandiExpenses) || 0;
+        dataToSubmit.purchaseFuel = Number(formData.purchaseFuel) || 0;
+        dataToSubmit.purchaseFood = Number(formData.purchaseFood) || 0;
+        dataToSubmit.purchaseHotel = Number(formData.purchaseHotel) || 0;
+      }
 
       if (isEdit) {
         await animalAPI.update(id, dataToSubmit);
@@ -419,6 +427,8 @@ const AnimalForm = () => {
                 onChange={handleChange}
                 options={animalSubcategories}
                 placeholder="Select subcategory"
+                error={errors.subcategory}
+                required
               />
               <Select
                 label="Sex"
@@ -441,38 +451,16 @@ const AnimalForm = () => {
             </div>
           </Card>
 
-          {/* Photo Upload */}
-          {/* <Card>
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Animal Photo</h3>
-            <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl p-8 hover:border-emerald-500 transition-colors cursor-pointer">
-              <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                <HiOutlineCamera className="w-10 h-10 text-gray-400" />
-              </div>
-              <p className="text-sm text-gray-600 text-center">
-                Click to upload or drag and drop
-              </p>
-              <p className="text-xs text-gray-400 mt-1">PNG, JPG up to 5MB</p>
-              <input type="file" className="hidden" accept="image/*" />
-            </div>
-
-            <div className="mt-6">
-              <label className="flex items-center space-x-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="pedigreeInfo"
-                  checked={formData.pedigreeInfo}
-                  onChange={handleChange}
-                  className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
-                />
-                <span className="text-sm text-gray-700">Has Pedigree Information</span>
-              </label>
-            </div>
-          </Card> */}
-
           {/* Purchase Info */}
           <Card>
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Purchase Information</h3>
-            
+
+            {isEdit && (
+              <p className="text-xs text-gray-500 mb-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                Purchase price &amp; purchasing expenses are locked after creation — they're tied to a recorded capital transaction and can't be edited here.
+              </p>
+            )}
+
             <div className="space-y-4">
               <Input
                 label="Purchase Price"
@@ -483,7 +471,8 @@ const AnimalForm = () => {
                 placeholder="Enter price"
                 prefix="Rs."
                 error={errors.purchasePrice}
-                required
+                required={!isEdit}
+                disabled={isEdit}
               />
               <p className="text-sm font-medium text-gray-700 mt-4 mb-2">Purchasing Expenses (optional)</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -496,6 +485,7 @@ const AnimalForm = () => {
                   placeholder="0"
                   prefix="Rs."
                   min={0}
+                  disabled={isEdit}
                 />
                 <Input
                   label="Mandi Expenses"
@@ -506,6 +496,7 @@ const AnimalForm = () => {
                   placeholder="0"
                   prefix="Rs."
                   min={0}
+                  disabled={isEdit}
                 />
                 <Input
                   label="Fuel"
@@ -516,6 +507,7 @@ const AnimalForm = () => {
                   placeholder="0"
                   prefix="Rs."
                   min={0}
+                  disabled={isEdit}
                 />
                 <Input
                   label="Food"
@@ -526,6 +518,7 @@ const AnimalForm = () => {
                   placeholder="0"
                   prefix="Rs."
                   min={0}
+                  disabled={isEdit}
                 />
                 <Input
                   label="Hotel"
@@ -536,6 +529,7 @@ const AnimalForm = () => {
                   placeholder="0"
                   prefix="Rs."
                   min={0}
+                  disabled={isEdit}
                 />
               </div>
               {(() => {
