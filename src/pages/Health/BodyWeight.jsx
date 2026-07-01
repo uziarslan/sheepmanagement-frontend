@@ -797,10 +797,15 @@ const BodyWeight = () => {
     return new Set(batchAnimals.map(a => String(getId(a))));
   }, [batchAnimals]);
 
-  const avgWeight = batchAnimals.length > 0
-    ? (batchAnimals.reduce((sum, a) => sum + (a.weight || 0), 0) / batchAnimals.length).toFixed(1)
+  // Average only over animals that actually have a recorded weight — counting
+  // never-weighed animals as 0 kg deflated the herd average (audit math-fix).
+  const weighedAnimals = batchAnimals.filter(a => Number(a.weight) > 0);
+  const avgWeight = weighedAnimals.length > 0
+    ? (weighedAnimals.reduce((sum, a) => sum + Number(a.weight), 0) / weighedAnimals.length).toFixed(1)
     : 0;
-  const totalWeight = batchAnimals.reduce((sum, a) => sum + (a.weight || 0), 0);
+  // Coerce to Number before summing — a.weight can arrive as a string from the
+  // import path, which would string-concatenate the reduce (and break .toFixed).
+  const totalWeight = batchAnimals.reduce((sum, a) => sum + (Number(a.weight) || 0), 0);
   const weightedThisMonth = weightRecords.filter(w => {
     const recordDate = new Date(w.date);
     const now = new Date();
@@ -876,7 +881,7 @@ const BodyWeight = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-purple-100 text-sm">Total Weight</p>
-                <p className="text-2xl font-bold mt-1">{totalWeight} kg</p>
+                <p className="text-2xl font-bold mt-1">{totalWeight.toFixed(1)} kg</p>
               </div>
               <HiOutlineScale className="w-8 h-8 text-purple-200" />
             </div>

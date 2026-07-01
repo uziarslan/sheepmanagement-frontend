@@ -146,10 +146,14 @@ const Capital = () => {
         const p1 = capital?.partner1Capital ?? 0;
         const p2 = capital?.partner2Capital ?? 0;
         const re = capital?.retainedEarningsCapital ?? 0;
+        // Legacy capital (set before the partner breakdown existed) has no
+        // subdivision, so Retained Earnings falls back to totalCapital — matching
+        // the dropdown label and the backend's own check (capital.service.js).
+        const hasSub = p1 + p2 + re > 0;
         let maxWithdraw = 0;
         if (formData.investmentSubtype === PARTNERS.PARTNER_1) maxWithdraw = p1;
         else if (formData.investmentSubtype === PARTNERS.PARTNER_2) maxWithdraw = p2;
-        else if (formData.investmentSubtype === 'Retained Earnings') maxWithdraw = re;
+        else if (formData.investmentSubtype === 'Retained Earnings') maxWithdraw = hasSub ? re : (capital?.totalCapital ?? 0);
         if (amt > maxWithdraw) {
           newErrors.amount = `Cannot exceed balance (Rs.${maxWithdraw.toLocaleString()})`;
         }
@@ -367,10 +371,10 @@ const Capital = () => {
                 </div>
               </div>
               <p className="text-2xl font-bold">
-                {formatCurrency((capital?.availableAmount ?? 0) + (capital?.loss ?? 0))}
+                {formatCurrency(capital?.availableAmount)}
               </p>
               <p className="text-blue-100 text-xs mt-2">
-                Actual cash in hand (before loss deduction)
+                Actual cash in hand
               </p>
             </div>
           </Card>

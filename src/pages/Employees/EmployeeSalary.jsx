@@ -263,7 +263,18 @@ const EmployeeSalary = () => {
     (p) => p.month === monthInt && p.year === yearInt
   );
 
-  const getEmployeePaymentForPeriod = (empId) => {
+  // GROSS wages satisfied for the period (pre-deduction entitlement paid).
+  // "Due"/"remaining" compares this against the gross monthly payroll. Using
+  // netSalary here was wrong: advance repayments / other deductions reduce net
+  // cash but do NOT mean wages are still owed, so net-vs-gross overstated Due.
+  const getEmployeeGrossPaidForPeriod = (empId) => {
+    return paymentsForPeriod
+      .filter((p) => String(p.employee?._id || p.employee || p.employeeId) === String(empId))
+      .reduce((sum, p) => sum + (p.grossSalary || 0), 0);
+  };
+
+  // Net cash actually disbursed to an employee this period (for the "Paid" column).
+  const getEmployeeNetPaidForPeriod = (empId) => {
     return paymentsForPeriod
       .filter((p) => String(p.employee?._id || p.employee || p.employeeId) === String(empId))
       .reduce((sum, p) => sum + (p.netSalary || 0), 0);
@@ -273,8 +284,14 @@ const EmployeeSalary = () => {
     (sum, e) => sum + (e.salary || 0) + (e.allowances || 0),
     0
   );
+  // Net cash actually disbursed this period (for the "Paid" card).
   const totalPaidThisPeriod = paymentsForPeriod.reduce(
     (sum, p) => sum + (p.netSalary || 0),
+    0
+  );
+  // Gross wages satisfied this period (for the "remaining" owed figure).
+  const totalGrossPaidThisPeriod = paymentsForPeriod.reduce(
+    (sum, p) => sum + (p.grossSalary || 0),
     0
   );
 
@@ -326,7 +343,7 @@ const EmployeeSalary = () => {
             </div>
             <p className="text-2xl font-bold">{formatCurrency(totalPaidThisPeriod)}</p>
             <p className="text-blue-100 text-xs mt-1">
-              {formatCurrency(totalMonthlyPayroll - totalPaidThisPeriod)} remaining
+              {formatCurrency(Math.max(0, totalMonthlyPayroll - totalGrossPaidThisPeriod))} remaining
             </p>
           </div>
         </Card>
@@ -421,8 +438,9 @@ const EmployeeSalary = () => {
                 filteredEmployees.map((emp) => {
                   const empId = getId(emp);
                   const gross = (emp.salary || 0) + (emp.allowances || 0);
-                  const paid = getEmployeePaymentForPeriod(empId);
-                  const due = Math.max(0, gross - paid);
+                  const paid = getEmployeeNetPaidForPeriod(empId);
+                  const grossPaid = getEmployeeGrossPaidForPeriod(empId);
+                  const due = Math.max(0, gross - grossPaid);
                   return (
                     <TableRow key={empId}>
                       <TableCell>
@@ -785,11 +803,21 @@ const EmployeeSalary = () => {
                 const fullGross =
                   (selectedEmployee.salary || 0) + (selectedEmployee.allowances || 0);
                 const days = parseFloat(formData.payableDays || '0');
-                const dim = parseInt(formData.daysInMonth, 10) || 30;
+                const dim = parseInt(formData.daysInMonth, 10)
+                  || getDaysInMonth(formData.month, formData.year);
                 const isPartial =
                   formData.isPartial && days > 0 && days < dim;
+                // Mirror the backend's per-component proration+rounding
+                // (salary.service: round each of basic/allowances, then sum)
+                // so the previewed Gross/Net matches the stored value exactly,
+                // not a combined-rounding figure that can differ by a paisa.
+                const round2 = (n) => Math.round(n * 100) / 100;
+                const factor = days / dim;
                 const gross = isPartial
-                  ? Math.round((fullGross * days) / dim * 100) / 100
+                  ? round2(
+                      round2((selectedEmployee.salary || 0) * factor) +
+                      round2((selectedEmployee.allowances || 0) * factor)
+                    )
                   : fullGross;
                 const advDed = parseFloat(formData.advanceDeduction || '0');
                 const otherDed = parseFloat(formData.otherDeductions || '0');

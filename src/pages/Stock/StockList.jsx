@@ -76,7 +76,9 @@ const StockList = () => {
 
   // Calculate totals
   const totalValue = stocks.reduce((sum, s) => sum + (s.currentQty * s.openingRatePerUnit), 0);
-  const lowStockItems = stocks.filter(s => s.currentQty < s.openingStockQty * 0.2).length;
+  // Low stock uses the SAME rule as the backend (/stock/low-stock + summary):
+  // currentQty <= minStockLevel. Set minStockLevel per item to get an alert.
+  const lowStockItems = stocks.filter(s => (s.currentQty ?? 0) <= (s.minStockLevel || 0)).length;
 
   // Filter stocks
   let filteredStocks = filterBySearch(stocks, search, ['productName', 'category']);
@@ -185,7 +187,7 @@ const StockList = () => {
             ) : (
               filteredStocks.map((stock) => {
                 const currentValue = stock.currentQty * stock.openingRatePerUnit;
-                const isLowStock = stock.currentQty < stock.openingStockQty * 0.2;
+                const isLowStock = (stock.currentQty ?? 0) <= (stock.minStockLevel || 0);
                 
                 return (
                   <TableRow key={stock.id}>
