@@ -741,7 +741,7 @@ const AnimalList = () => {
         {/* Pagination controls */}
         <div className="mt-4 flex items-center justify-between">
           <div className="text-sm text-gray-500">
-            Showing {( (page - 1) * limit) + 1} to {Math.min(page * limit, total)} of {total} animals
+            Showing {total === 0 ? 0 : ((page - 1) * limit) + 1} to {Math.min(page * limit, total)} of {total} animals
           </div>
           <div className="flex items-center space-x-2">
             <Select

@@ -88,7 +88,9 @@ const StockCategoryList = ({
   };
 
   const totalValue = stocks.reduce((sum, s) => sum + (s.currentQty * s.openingRatePerUnit), 0);
-  const lowStockItems = stocks.filter(s => s.currentQty < s.openingStockQty * 0.2).length;
+  // Low stock uses the SAME rule as the backend (/stock/low-stock + summary):
+  // currentQty <= minStockLevel. Set minStockLevel per item to get an alert.
+  const lowStockItems = stocks.filter(s => (s.currentQty ?? 0) <= (s.minStockLevel || 0)).length;
 
   let filteredStocks = filterBySearch(stocks, search, ['productName']);
 
