@@ -124,7 +124,7 @@ const Dashboard = () => {
             </div>
           </div>
           <p className="mt-4 text-blue-100 text-sm">
-            {((stats?.availableCapital / stats?.totalCapital) * 100).toFixed(1)}% of total capital
+            {(stats?.totalCapital > 0 ? (stats.availableCapital / stats.totalCapital) * 100 : 0).toFixed(1)}% of total capital
           </p>
         </Card>
 
@@ -139,7 +139,7 @@ const Dashboard = () => {
             </div>
           </div>
           <p className="mt-4 text-purple-100 text-sm">
-            {((stats?.investedCapital / stats?.totalCapital) * 100).toFixed(1)}% invested
+            {(stats?.totalCapital > 0 ? (stats.investedCapital / stats.totalCapital) * 100 : 0).toFixed(1)}% invested
           </p>
         </Card>
       </div>
